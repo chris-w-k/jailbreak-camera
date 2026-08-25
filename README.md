@@ -6,8 +6,8 @@ reach anything — so he asks *you* for things. Find something sharp and pointy 
 whatever room you happen to be in, hold it up, and photograph it. Gemini looks at
 the photo and decides whether it'll do.
 
-Seven rooms, three goes each. Three wrong objects and the guard is already behind
-you.
+Seven rooms, three goes each, thirty seconds on the clock per go. Three misses and
+the guard is already behind you.
 
 Same character, same isometric-diorama art style, same daft voice as jailbreak.
 Completely different mechanic: linear instead of branching, and the puzzle is the
@@ -55,6 +55,19 @@ Look at them before committing; a character that's drifted off-model is worth
 regenerating. Until a stage has a PNG the game shows a labelled holding frame,
 so it's playable with no art at all.
 
+**What the images are of.** Stage 1 is the punk alone in his cell. From stage 2 on,
+the frame is the space *between him and the guard*, and that space shrinks: a
+silhouette at the far end of a corridor, a man through a doorway, a man an arm's
+reach away on the other side of a counter, then a man with a dog. Stage 7 snaps it
+open again — punk large and running, guard tiny and furious at the gate — which is
+what makes it read as escape rather than just another room. So the art carries its
+own tension meter alongside the tally marks.
+
+The guard has his own `GUARD_SHEET` in `stages.js` for the same reason the punk has
+a character sheet: he's in six of the seven images and has to be the same man each
+time. It's only sent for stages flagged `guard: true`, so stage 1 doesn't get a
+guard the script never asked for.
+
 ## Dev switches
 
 | | |
@@ -62,7 +75,27 @@ so it's playable with no art at all.
 | `MOCK=1` | canned verdicts, no API calls, no camera needed |
 | `?stage=5` | start on stage 5 instead of playing four stages first |
 | `?verdict=fail` | force every judgement — `pass`, `fail` or `unreadable`. Mock mode only |
+| `SHOT_SECONDS=6` | short clock, so a timeout is six seconds away instead of thirty |
 | `npm run mock` + `?verdict=fail` | the quickest way to see the CAUGHT screen |
+
+## The shot clock
+
+Thirty seconds from the viewfinder opening to the shutter (`SHOT_SECONDS`). A bar
+drains along the bottom of the viewfinder with the count beside it; pips start at
+ten seconds and go up a fifth and get louder for the last five.
+
+Running out costs an attempt, exactly as a wrong object does — one currency, so the
+tally marks stay the only thing the player has to watch. Two exemptions:
+
+- **It doesn't run in file-picker mode.** The OS photo sheet is a modal over the
+  whole screen, and a clock draining behind something you can't see is a trap.
+- **It pauses when the tab goes away**, and resumes when you come back. A phone call
+  shouldn't cost an attempt, and it shouldn't hand out free time either.
+
+The expiry is reported by the client rather than enforced against a server-side
+deadline. Deliberate for a prototype — there's nothing to win, so the only person a
+tamperer could give more time to is themselves. If it ever becomes competitive,
+stamp the stage-open time on the session and reject a late photo in `/api/judge`.
 
 ## How the judging works
 
