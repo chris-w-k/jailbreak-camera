@@ -394,7 +394,7 @@
       <div class="frame"></div>
       <div class="ask" id="cam-ask" data-say></div>
       <div class="clock hide" id="clock">
-        <span class="num" id="clock-num">30</span>
+        <span class="num" id="clock-num">15</span>
         <span class="rail"><span class="fill" id="clock-fill"></span></span>
       </div>
     </div>
@@ -666,10 +666,24 @@ const Chip = (() => {
   const sfx = {
     blip:    () => voice(N['D5'], 0, 0.035, { type: 'square', vol: 0.09 }),
     hover:   () => voice(N['A4'], 0, 0.04,  { type: 'square', vol: 0.08 }),
-    // Shot-clock pips. tick from ten seconds out, tickHot for the last five —
-    // a fifth higher and twice as loud, so the change is heard rather than counted.
-    tick:    () => voice(N['A4'], 0, 0.028, { type: 'square', vol: 0.075 }),
-    tickHot: () => { voice(N['E5'], 0, 0.045, { type: 'square', vol: 0.17 }); noise(0, 0.02, { vol: 0.05, hp: 4000 }); },
+    // Shot-clock pips, one a second. These have to carry over a phone speaker in
+    // a room you are moving around, so they are an order of magnitude louder and
+    // longer than the UI accents above — an earlier 28ms/0.075 version was
+    // inaudible in practice.
+    pip:     () => voice(N['A4'], 0, 0.07, { type: 'square', vol: 0.24 }),
+    // The last few seconds double up: two pips a second, a fifth higher and
+    // louder again, so the acceleration is what tells you you're out of road.
+    pipHot:  () => {
+      voice(N['E5'], 0,    0.075, { type: 'square', vol: 0.36 });
+      voice(N['E5'], 0.42, 0.075, { type: 'square', vol: 0.36 });
+    },
+    // Lost a go. Deliberately not the game-over sting: a short two-tone klaxon,
+    // so "that attempt is gone" and "the run is over" don't sound the same.
+    buzz:    () => {
+      voice(N['A#3'], 0,    0.17, { type: 'square', vol: 0.36 });
+      voice(N['F3'],  0.15, 0.30, { type: 'square', vol: 0.36, slide: 0.8 });
+      noise(0, 0.10, { vol: 0.18, hp: 300 });
+    },
     select:  () => { voice(N['D5'], 0, 0.06, { vol: 0.3 }); voice(N['A5'], 0.06, 0.12, { vol: 0.3 }); },
     confirm: () => { ['D5','F#5','A5','D6'].forEach((n, i) => voice(N[n], i * 0.055, 0.14, { vol: 0.32 })); },
     thud:    () => { voice(N['D3'], 0, 0.22, { type: 'triangle', vol: 0.4, slide: 0.5 }); noise(0, 0.14, { vol: 0.22, hp: 400 }); },
@@ -1251,8 +1265,15 @@ async function shoot() {
 async function timeUp() {
   if (busy) return;
   busy = true;
+  // Same bookkeeping submit() does. Without it a run whose very first action is
+  // a timeout reaches verdict() with judged still null, and the analytics line
+  // dereferences it — which is the most likely way to time out, not the least.
+  judged = S.stage;
+  judgedAttempt = (S.attemptsPerStage - S.attemptsLeft) + 1;
   const shot = Camera.capture();
-  Chip.sfx.lose();
+  // The go is gone: klaxon now. If that was the last one, ending() adds the
+  // game-over sting on top, which is the right escalation.
+  Chip.sfx.buzz();
   let out;
   try {
     out = await api('/api/timeout', { sessionId: S.sessionId });
@@ -1289,7 +1310,7 @@ async function onFile(e) {
 /* =========================================================================
    THE SHOT CLOCK
 
-   Thirty seconds from the viewfinder opening to the shutter. Running out costs
+   Fifteen seconds from the viewfinder opening to the shutter. Running out costs
    an attempt, same as a wrong object — one currency, so the tally marks stay
    the only thing the player has to keep an eye on.
 
@@ -1299,7 +1320,7 @@ async function onFile(e) {
    when the tab goes away, so coming back to a dead run can't happen.
    ========================================================================= */
 const Clock = (() => {
-  let timer = null, left = 0, total = 30, onExpire = null, paused = false;
+  let timer = null, left = 0, total = 15, onExpire = null, paused = false;
 
   function paint() {
     const el = $('clock');
@@ -1313,8 +1334,9 @@ const Clock = (() => {
     if (paused) return;
     left -= 1;
     paint();
-    if (left <= 5 && left > 0) Chip.sfx.tickHot();
-    else if (left <= 10 && left > 0) Chip.sfx.tick();
+    // A pip every second the whole way down, doubling up for the last five.
+    if (left > 5) Chip.sfx.pip();
+    else if (left > 0) Chip.sfx.pipHot();
     if (left <= 0) {
       stop();
       if (onExpire) onExpire();
@@ -1331,7 +1353,7 @@ const Clock = (() => {
     get running() { return !!timer; },
     start(seconds, expired) {
       stop();
-      total = Math.max(5, Number(seconds) || 30);
+      total = Math.max(5, Number(seconds) || 15);
       left = total;
       onExpire = expired;
       paused = false;
@@ -1444,7 +1466,7 @@ function verdict(out, shot) {
     : Lang.t('retry');
   go.dataset.next = kind === 'pass' ? 'brief' : 'cam';
 
-  // The timeout already played its own sting on the way in; don't stack another.
+  // The timeout already played its klaxon on the way in; don't stack another.
   if (kind !== 'timeout') Chip.sfx[kind === 'pass' ? 'confirm' : wasted ? 'thud' : 'blip']();
   Speech.say(out.reason);
   show('verdict');
