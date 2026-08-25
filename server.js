@@ -64,7 +64,7 @@ const PHOTOS_PER_RUN = Number(process.env.PHOTOS_PER_RUN || 40);
 // The shot clock. The server owns the number so it can be tuned without a client
 // edit; the client counts down and reports the expiry, because only the client
 // knows when the viewfinder actually opened.
-const SHOT_SECONDS = Number(process.env.SHOT_SECONDS || 30);
+const SHOT_SECONDS = Number(process.env.SHOT_SECONDS || 15);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 700 * 1024);
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
