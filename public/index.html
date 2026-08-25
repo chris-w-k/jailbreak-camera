@@ -158,6 +158,25 @@
     background:rgba(13,13,18,.86); border:3px solid var(--purple-dk);
     padding:10px 12px; font-size:13px; line-height:1.5; font-weight:700; color:#fff;
   }
+  /* The shot clock. A bar draining across the bottom edge of the viewfinder plus
+     a numeral, because a bar alone reads as "some time left" and a number alone
+     is easy to miss while you are hunting round the room. */
+  .clock{
+    position:absolute; left:0; right:0; bottom:0; z-index:4; height:34px;
+    background:rgba(13,13,18,.86); border-top:3px solid var(--line);
+    display:flex; align-items:center; gap:10px; padding:0 12px;
+  }
+  .clock .num{font-family:var(--pix); font-size:13px; color:var(--purple-lt); flex:none; min-width:34px;}
+  .clock .rail{flex:1; height:9px; background:#0d0d12; border:2px solid var(--line); overflow:hidden;}
+  .clock .fill{height:100%; width:100%; background:var(--purple); transition:width .95s linear;}
+  /* Two thresholds, matching where the ticking starts and where it tightens. */
+  .clock.warn .num{color:var(--amber);}
+  .clock.warn .fill{background:var(--amber); transition:width .95s linear;}
+  .clock.hot .num{color:var(--red); animation:blink .5s steps(1) infinite;}
+  .clock.hot .fill{background:var(--red);}
+  /* The framing guide stops short of the clock rather than running under it. */
+  .cam.timed .frame{bottom:48px;}
+
   .shutter{
     margin-top:14px; width:100%; padding:22px; font-family:var(--pix); font-size:15px;
     background:var(--purple); border:4px solid var(--purple-lt); color:#fff;
@@ -187,6 +206,12 @@
   .shot .stamp.pass{color:var(--green); border-top-color:var(--green);}
   .shot .stamp.fail{color:var(--red); border-top-color:var(--red);}
   .shot .stamp.soft{color:var(--amber); border-top-color:var(--amber);}
+  /* Nothing was photographed, so there is nothing to show but the fact of it. */
+  .shot.empty{
+    aspect-ratio:3/4; display:flex; align-items:center; justify-content:center;
+    background:repeating-linear-gradient(135deg, #17171d 0 14px, #1e1e26 14px 28px);
+  }
+  .shot.empty .none{font-family:var(--pix); font-size:11px; color:#4a4a5c; letter-spacing:2px;}
 
   .load-title{font-size:13px; color:var(--purple-lt); text-align:center; margin-bottom:14px;}
   .load-note{font-family:var(--body); font-size:13px; color:#a8a8c0; text-align:center; min-height:34px; line-height:1.8; margin-top:12px;}
@@ -368,6 +393,10 @@
       <video id="video" playsinline muted autoplay></video>
       <div class="frame"></div>
       <div class="ask" id="cam-ask" data-say></div>
+      <div class="clock hide" id="clock">
+        <span class="num" id="clock-num">30</span>
+        <span class="rail"><span class="fill" id="clock-fill"></span></span>
+      </div>
     </div>
     <button class="shutter" id="shoot"><span class="lens"></span><span data-t="cam_shoot">SHOOT IT</span></button>
     <div class="cam-hint" data-t="cam_hint">HOLD IT UP AND FILL THE FRAME</div>
@@ -637,6 +666,10 @@ const Chip = (() => {
   const sfx = {
     blip:    () => voice(N['D5'], 0, 0.035, { type: 'square', vol: 0.09 }),
     hover:   () => voice(N['A4'], 0, 0.04,  { type: 'square', vol: 0.08 }),
+    // Shot-clock pips. tick from ten seconds out, tickHot for the last five —
+    // a fifth higher and twice as loud, so the change is heard rather than counted.
+    tick:    () => voice(N['A4'], 0, 0.028, { type: 'square', vol: 0.075 }),
+    tickHot: () => { voice(N['E5'], 0, 0.045, { type: 'square', vol: 0.17 }); noise(0, 0.02, { vol: 0.05, hp: 4000 }); },
     select:  () => { voice(N['D5'], 0, 0.06, { vol: 0.3 }); voice(N['A5'], 0.06, 0.12, { vol: 0.3 }); },
     confirm: () => { ['D5','F#5','A5','D6'].forEach((n, i) => voice(N[n], i * 0.055, 0.14, { vol: 0.32 })); },
     thud:    () => { voice(N['D3'], 0, 0.22, { type: 'triangle', vol: 0.4, slide: 0.5 }); noise(0, 0.14, { vol: 0.22, hp: 400 }); },
@@ -733,6 +766,7 @@ const Lang = (() => {
     judging: 'DEVELOPING', judging_notes: ['HE’S HAVING A LOOK...'],
     verdict_pass: 'THAT’LL DO', verdict_fail: 'NOT A CHANCE',
     verdict_unreadable: 'CAN’T SEE IT', verdict_error: 'HOLD ON',
+    verdict_timeout: 'OUT OF TIME',
     free_retry: 'FREE GO — THAT ONE DIDN’T COUNT', attempts_left: '{n} LEFT',
     last_chance: 'LAST CHANCE', retry: 'GO AGAIN', onward: 'GO ON THEN',
     caught_title: 'CAUGHT', caught_sub: 'Three strikes and the guard was already behind you.',
@@ -1018,6 +1052,7 @@ function toast(msg) {
 
 function fail(e, titleKey) {
   console.error(e);
+  Clock.stop();
   Chip.stopLoading();
   stopNotes();
   busy = false;
@@ -1196,17 +1231,41 @@ async function openCamera() {
   icon.textContent = '🔊';
   ask.appendChild(icon);
   show('cam');
+  Clock.start(S.shotSeconds, timeUp);
 }
 
 async function shoot() {
   if (busy) return;
   const shot = Camera.capture();
   if (!shot) return toast('The camera gave us an empty frame — try again.');
+  Clock.stop();
   Chip.sfx.blip();
   submit(shot);
 }
 
+/**
+ * The clock hit zero. Show whatever the viewfinder was pointing at when it did —
+ * it costs nothing, and an empty panel reads as a bug where a stamped frame reads
+ * as "that's what you had". Falls back to the panel if the grab fails.
+ */
+async function timeUp() {
+  if (busy) return;
+  busy = true;
+  const shot = Camera.capture();
+  Chip.sfx.lose();
+  let out;
+  try {
+    out = await api('/api/timeout', { sessionId: S.sessionId });
+  } catch (e) {
+    busy = false;
+    return fail(e);
+  }
+  busy = false;
+  verdict(out, shot);
+}
+
 async function onFile(e) {
+  Clock.stop();
   const input = e.target;
   const file = input.files && input.files[0];
   if (!file || busy) { input.value = ''; return; }
@@ -1227,6 +1286,69 @@ async function onFile(e) {
   submit(shot);
 }
 
+/* =========================================================================
+   THE SHOT CLOCK
+
+   Thirty seconds from the viewfinder opening to the shutter. Running out costs
+   an attempt, same as a wrong object — one currency, so the tally marks stay
+   the only thing the player has to keep an eye on.
+
+   Two deliberate exemptions. It does not run in file-picker mode: the OS photo
+   picker is a modal sheet over the whole screen, and a clock draining behind it
+   that the player cannot see is a trap rather than a challenge. And it pauses
+   when the tab goes away, so coming back to a dead run can't happen.
+   ========================================================================= */
+const Clock = (() => {
+  let timer = null, left = 0, total = 30, onExpire = null, paused = false;
+
+  function paint() {
+    const el = $('clock');
+    $('clock-num').textContent = left;
+    $('clock-fill').style.width = Math.max(0, (left / total) * 100) + '%';
+    el.classList.toggle('warn', left <= 10 && left > 5);
+    el.classList.toggle('hot', left <= 5);
+  }
+
+  function beat() {
+    if (paused) return;
+    left -= 1;
+    paint();
+    if (left <= 5 && left > 0) Chip.sfx.tickHot();
+    else if (left <= 10 && left > 0) Chip.sfx.tick();
+    if (left <= 0) {
+      stop();
+      if (onExpire) onExpire();
+    }
+  }
+
+  function stop() {
+    clearInterval(timer); timer = null; paused = false;
+    $('clock').classList.add('hide');
+    document.querySelector('.cam').classList.remove('timed');
+  }
+
+  return {
+    get running() { return !!timer; },
+    start(seconds, expired) {
+      stop();
+      total = Math.max(5, Number(seconds) || 30);
+      left = total;
+      onExpire = expired;
+      paused = false;
+      $('clock').classList.remove('hide', 'warn', 'hot');
+      document.querySelector('.cam').classList.add('timed');
+      // No transition on the first paint, or the bar visibly slides in from empty.
+      $('clock-fill').style.transition = 'none';
+      paint();
+      requestAnimationFrame(() => { $('clock-fill').style.transition = ''; });
+      timer = setInterval(beat, 1000);
+    },
+    stop,
+    pause() { if (timer) paused = true; },
+    resume() { paused = false; },
+  };
+})();
+
 /* ---- the judge ---- */
 function startNotes() {
   const notes = Lang.notes();
@@ -1239,6 +1361,7 @@ function stopNotes() { clearInterval(noteTimer); noteTimer = null; }
 
 async function submit(shot) {
   busy = true;
+  Clock.stop();
   judged = S.stage;
   judgedAttempt = (S.attemptsPerStage - S.attemptsLeft) + 1;
 
@@ -1268,8 +1391,10 @@ async function submit(shot) {
 }
 
 function verdict(out, shot) {
-  const kind = out.verdict;                                   // pass | fail | unreadable | error
-  const wasted = kind === 'fail';
+  const kind = out.verdict;               // pass | fail | unreadable | error | timeout
+  // Anything that actually cost an attempt. A timeout costs one; an unreadable
+  // photo or a wobbly API call do not.
+  const wasted = kind === 'fail' || kind === 'timeout';
   S = Object.assign({}, S, out);
 
   Analytics.capture('verdict', {
@@ -1277,7 +1402,7 @@ function verdict(out, shot) {
     object: out.object, confidence: out.confidence, latency_ms: out.latencyMs,
   });
   if (kind === 'pass') Analytics.capture('stage_passed', { stage: judged.id, attempts_used: judgedAttempt });
-  if (kind === 'fail' && out.over !== 'caught') Analytics.capture('stage_failed', { stage: judged.id, attempt: judgedAttempt, attempts_left: out.attemptsLeft });
+  if (wasted && out.over !== 'caught') Analytics.capture('stage_failed', { stage: judged.id, attempt: judgedAttempt, attempts_left: out.attemptsLeft, timed_out: kind === 'timeout' });
 
   // Caught or out: the ending screen carries the punk's last line, so the run
   // doesn't stop on a verdict card and then stop again on a result card.
@@ -1287,12 +1412,20 @@ function verdict(out, shot) {
   const host = $('v-shot');
   host.innerHTML = '';
   host.classList.remove('busy');
-  const img = new Image();
-  img.src = shot.dataURL;
+  host.classList.toggle('empty', !shot);
   const stamp = document.createElement('div');
   stamp.className = 'stamp ' + (kind === 'pass' ? 'pass' : wasted ? 'fail' : 'soft');
   stamp.textContent = Lang.t('verdict_' + (kind === 'error' ? 'error' : kind));
-  host.append(img, stamp);
+  if (shot) {
+    const img = new Image();
+    img.src = shot.dataURL;
+    host.append(img, stamp);
+  } else {
+    const none = document.createElement('span');
+    none.className = 'none';
+    none.textContent = 'NO PHOTO';
+    host.append(none, stamp);
+  }
 
   const line = $('v-line');
   line.innerHTML = '';
@@ -1311,7 +1444,8 @@ function verdict(out, shot) {
     : Lang.t('retry');
   go.dataset.next = kind === 'pass' ? 'brief' : 'cam';
 
-  Chip.sfx[kind === 'pass' ? 'confirm' : wasted ? 'thud' : 'blip']();
+  // The timeout already played its own sting on the way in; don't stack another.
+  if (kind !== 'timeout') Chip.sfx[kind === 'pass' ? 'confirm' : wasted ? 'thud' : 'blip']();
   Speech.say(out.reason);
   show('verdict');
 }
@@ -1319,6 +1453,7 @@ function verdict(out, shot) {
 /* ---- endings ---- */
 function ending(out) {
   const won = S.over === 'escaped';
+  Clock.stop();
   Camera.stop();
   Chip.stopLoading();
 
@@ -1422,9 +1557,11 @@ document.addEventListener('keydown', e => {
 // Release the camera when the tab goes away, so the recording indicator goes
 // out, and pick it back up on return if the viewfinder is what's on screen.
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { Camera.stop(); Speech.stop(); return; }
+  // The clock pauses rather than stops: a phone call or a notification shouldn't
+  // burn an attempt, and it shouldn't hand out free time either.
+  if (document.hidden) { Clock.pause(); Camera.stop(); Speech.stop(); return; }
   const open = document.querySelector('.screen.on');
-  if (open && open.id === 'screen-cam') Camera.attach();
+  if (open && open.id === 'screen-cam') { Camera.attach(); Clock.resume(); }
 });
 
 // Best-effort: tell the server a run is done with, rather than leaving it to
