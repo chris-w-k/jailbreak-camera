@@ -34,7 +34,10 @@ for (const line of readIfExists(path.join(ROOT, '.env')).split('\n')) {
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
 
-const API_KEY = process.env.GEMINI_API_KEY || '';
+// Trimmed deliberately: a key pasted into a hosting dashboard very often
+// arrives with a trailing space or newline, and Google rejects that as
+// API_KEY_INVALID with nothing to suggest whitespace is the problem.
+const API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 // --- analytics (optional; unset = the client sends nothing) ---
@@ -58,6 +61,10 @@ const RUNS_PER_DAY = Number(process.env.RUNS_PER_DAY || 250);    // global backs
 // A run is 7 stages x 3 attempts = 21 photos at worst. This is the per-session
 // ceiling that stops a stuck (or scripted) player looping /api/judge forever.
 const PHOTOS_PER_RUN = Number(process.env.PHOTOS_PER_RUN || 40);
+// The shot clock. The server owns the number so it can be tuned without a client
+// edit; the client counts down and reports the expiry, because only the client
+// knows when the viewfinder actually opened.
+const SHOT_SECONDS = Number(process.env.SHOT_SECONDS || 30);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 700 * 1024);
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -71,6 +78,10 @@ const VISION_MODELS = [
   'gemini-2.0-flash',
 ];
 let MODELS = { vision: VISION_MODELS[0], resolved: false, note: '' };
+// Set when Google tells us the key itself is no good. Worth its own flag: the
+// server still boots and still serves the page, but every judgement will fail,
+// so this is the one condition where the logs need to say what to go and fix.
+let KEY_REJECTED = false;
 
 // ---------------------------------------------------------------------------
 // the judge
@@ -180,6 +191,15 @@ const MOCK_PASS = ['A biro! Get in.', "Perfect. That'll do nicely.", 'Yes! Knew 
 const MOCK_FAIL = ["That's not it, mate. Look again.", 'Useless. Next.', "Nope. Try harder."];
 const MOCK_DARK = ["It's pitch black, I can't see a thing!", 'Whoa, too close — back up a bit.'];
 
+// Running out of time needs no model call — the punk isn't reacting to an object,
+// he's reacting to nothing arriving. Fixed lines, free, instant.
+const TIMEOUT_LINES = [
+  "Too slow! He's right on me!",
+  'What were you DOING? He nearly had me!',
+  "Time's up and so am I, come on!",
+  'Any slower and I\'d be back in that cell!',
+];
+
 async function mockJudge(stage, seq, force) {
   await sleep(900 + (seq % 3) * 400);
   // ?verdict=fail in the client forces the outcome, so the caught screen and the
@@ -266,6 +286,7 @@ function statePayload(s) {
     totalStages: TOTAL_STAGES,
     attemptsLeft: s.attemptsLeft,
     attemptsPerStage: ATTEMPTS_PER_STAGE,
+    shotSeconds: SHOT_SECONDS,
     over: s.over,
     stage: stage && !s.over ? { id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage) } : null,
     evidence: s.evidence,
@@ -344,6 +365,32 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
     confidence: Number.isFinite(confidence) ? confidence : null,
     latencyMs: Date.now() - t0,
     // Only meaningful on 'escaped', but harmless otherwise.
+    durationMs: Date.now() - s.startedAt,
+  };
+}
+
+/**
+ * The shot clock ran out. Costs an attempt, exactly as a wrong object does —
+ * one currency, so the tally marks stay the only thing the player has to watch.
+ *
+ * Note this is reported by the client rather than enforced from a server-side
+ * deadline. Deliberate for a prototype: there is nothing to win, so the only
+ * person a tamperer could give more time to is themselves. If this ever becomes
+ * something people compete at, stamp the stage-open time on the session and
+ * reject a late photo here instead.
+ */
+function timeUp(sessionId) {
+  const s = getSession(sessionId);
+  if (s.over) throw Object.assign(new Error('That run is already over.'), { status: 409 });
+
+  s.attemptsLeft -= 1;
+  if (s.attemptsLeft <= 0) s.over = 'caught';
+
+  return {
+    ...statePayload(s),
+    verdict: 'timeout',
+    object: null,
+    reason: TIMEOUT_LINES[(ATTEMPTS_PER_STAGE - s.attemptsLeft - 1 + s.photos) % TIMEOUT_LINES.length],
     durationMs: Date.now() - s.startedAt,
   };
 }
@@ -440,11 +487,12 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return json(res, 200, {
-        ok: true, mock: MOCK, hasKey: !!API_KEY, models: MODELS,
+        ok: true, mock: MOCK, hasKey: !!API_KEY, keyRejected: KEY_REJECTED, models: MODELS,
         gated: !!ACCESS_CODE, unlocked: unlocked(req),
         sessions: sessions.size,
         stages: TOTAL_STAGES,
         attemptsPerStage: ATTEMPTS_PER_STAGE,
+        shotSeconds: SHOT_SECONDS,
         langs: Object.keys(LANGS),
         posthog: POSTHOG_KEY ? { key: POSTHOG_KEY, host: POSTHOG_HOST } : null,
       });
@@ -477,6 +525,11 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       return json(res, 200, await judgePhoto(body.sessionId, body.image, body.mime, body.force));
     }
+    if (req.method === 'POST' && url.pathname === '/api/timeout') {
+      requireUnlocked(req);
+      const body = await readBody(req);
+      return json(res, 200, timeUp(body.sessionId));
+    }
     if (req.method === 'POST' && url.pathname === '/api/abandon') {
       // Best-effort tidy-up when a player closes the tab, so the map doesn't
       // wait out a TTL on runs we know are finished.
@@ -499,7 +552,14 @@ async function resolveModels() {
   if (MOCK) { MODELS = { vision: 'mock', resolved: true, note: 'mock mode' }; return; }
   try {
     const res = await fetch(`${API_BASE}/models?pageSize=200`, { headers: { 'x-goog-api-key': API_KEY } });
-    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 400);
+      if (res.status === 400 && /API[_ ]key not valid|API_KEY_INVALID/i.test(body)) {
+        KEY_REJECTED = true;
+        throw new Error('Google rejected GEMINI_API_KEY');
+      }
+      throw new Error(`${res.status} ${body.slice(0, 200)}`);
+    }
     const names = ((await res.json()).models || []).map(m => m.name.replace(/^models\//, ''));
     MODELS = {
       vision: VISION_MODELS.find(m => names.includes(m)) || VISION_MODELS[VISION_MODELS.length - 1],
@@ -523,8 +583,14 @@ async function resolveModels() {
     console.log(`     http://localhost:${PORT}`);
     console.log(`     vision: ${MODELS.vision}`);
     if (MODELS.note) console.log(`     \x1b[90m${MODELS.note}\x1b[0m`);
+    if (KEY_REJECTED) {
+      console.log('');
+      console.log(`     \x1b[31mGEMINI_API_KEY was rejected by Google. Every photo will fail.\x1b[0m`);
+      console.log(`     \x1b[90mcheck: no trailing space in the value · key is from aistudio.google.com/apikey\x1b[0m`);
+      console.log(`     \x1b[90m       Generative Language API enabled on that project · no IP/referrer restriction\x1b[0m`);
+    }
     if (MOCK) console.log(`     \x1b[33mMOCK MODE — no API calls, no cost\x1b[0m`);
-    console.log(`     stages: ${TOTAL_STAGES} · ${ATTEMPTS_PER_STAGE} attempts each`);
+    console.log(`     stages: ${TOTAL_STAGES} · ${ATTEMPTS_PER_STAGE} attempts each · ${SHOT_SECONDS}s on the clock`);
     console.log(artCount === TOTAL_STAGES
       ? `     art   : all ${TOTAL_STAGES} present`
       : `     \x1b[90mart   : ${artCount}/${TOTAL_STAGES} — run \`npm run art\` to generate the rest\x1b[0m`);
