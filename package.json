@@ -1,0 +1,17 @@
+{
+  "name": "jailbreak-camera",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A prison-break game where you escape by photographing real objects around you. Gemini judges whether what you found fits what the punk asked for.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "mock": "MOCK=1 node server.js",
+    "art": "node tools/generate-art.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

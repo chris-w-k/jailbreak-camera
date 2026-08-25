@@ -1,0 +1,34 @@
+# Render blueprint. In the Render dashboard: New → Blueprint → pick this repo.
+# It'll read this file and prompt for the secrets marked `sync: false`.
+#
+# Render serves https, which this game needs — getUserMedia is refused on plain
+# http, so the deployed URL is also the only practical way to test on a phone.
+services:
+  - type: web
+    name: jailbreak-camera
+    runtime: node
+    plan: free
+    region: frankfurt          # closest to you; oregon/singapore also available
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      # Set in the Render dashboard, never in this file.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ACCESS_CODE
+        sync: false
+      - key: POSTHOG_KEY
+        sync: false
+      - key: POSTHOG_HOST
+        value: https://eu.i.posthog.com
+      # Abuse guards. Tune these once you see real traffic.
+      - key: RUNS_PER_IP_PER_HOUR
+        value: "5"
+      - key: RUNS_PER_DAY
+        value: "250"
+      - key: PHOTOS_PER_RUN
+        value: "40"
+      - key: NODE_VERSION
+        value: "22"
