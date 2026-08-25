@@ -471,6 +471,11 @@
 const Chip = (() => {
   let ctx = null, master = null, muted = false;
   let loadingTimer = null, themeTimer = null;
+  // Every voice scheduled but not yet finished. WebAudio has no "cancel that
+  // note" once start() is called with a future time, so a several-second piece
+  // would otherwise play on over whatever the player does next — press GO AGAIN
+  // two seconds into the lament and it follows you into the new run.
+  let pending = [];
 
   const N = {}; // note name -> frequency
   (() => {
@@ -500,6 +505,9 @@ const Chip = (() => {
       const lfo = ctx.createOscillator(), lg = ctx.createGain();
       lfo.frequency.value = 6.5; lg.gain.value = vibrato;
       lfo.connect(lg); lg.connect(o.frequency); lfo.start(t); lfo.stop(t + dur);
+      // The LFO needs registering too, or hush() stops the note it modulates and
+      // leaves its modulator running — silent, but a node that outlives its job.
+      remember(lfo, lg, t + dur);
     }
     // square-wave envelope: instant attack, tiny decay, hard cut
     g.gain.setValueAtTime(0.0001, t);
@@ -508,6 +516,7 @@ const Chip = (() => {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(master);
     o.start(t); o.stop(t + dur + 0.02);
+    remember(o, g, t + dur + 0.02);
   }
   /** Same, but relative to "now" — what the one-shots and the theme use. */
   function voice(freq, at, dur, opts) { if (ctx) voiceAt(freq, ctx.currentTime + at, dur, opts); }
@@ -524,8 +533,34 @@ const Chip = (() => {
     const g = ctx.createGain(); g.gain.value = vol;
     src.connect(f); f.connect(g); g.connect(master);
     src.start(t);
+    remember(src, g, t + dur + 0.02);
   }
   function noise(at, dur, opts) { if (ctx) noiseAt(ctx.currentTime + at, dur, opts); }
+
+  function remember(node, gain, endsAt) {
+    pending.push({ node, gain, endsAt });
+    // Sweep the finished ones occasionally rather than on every note.
+    if (pending.length > 300) pending = pending.filter(p => p.endsAt > ctx.currentTime);
+  }
+
+  /**
+   * Cut everything still sounding or queued, over 30ms so it fades rather than
+   * clicks. Called when a run starts and when the sound is muted, which are the
+   * two moments a piece from the previous screen would otherwise bleed through.
+   */
+  function hush() {
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    for (const p of pending) {
+      try {
+        p.gain.gain.cancelScheduledValues(now);
+        p.gain.gain.setValueAtTime(p.gain.gain.value, now);
+        p.gain.gain.linearRampToValueAtTime(0.0001, now + 0.03);
+        p.node.stop(now + 0.04);
+      } catch { /* already finished; nothing to cut */ }
+    }
+    pending = [];
+  }
 
   /* ---- the title fanfare: heroic, dumb, in D major, ~150bpm ---- */
   const B = 0.4 / 2; // one eighth note
@@ -662,6 +697,82 @@ const Chip = (() => {
   }
   function stopLoading() { clearInterval(loadingTimer); loadingTimer = null; }
 
+  /* ------------------------------------------------------------------
+     WIN — a fanfare in D major, ~6s. Three voices: a lead that climbs twice
+     and lands on a held top A, a quiet harmony filling out the long notes so
+     they read as brass rather than as one thin square, and a walking bass
+     under D - A - Bm - G - A - D. Deliberately the same key as the title
+     theme, so winning sounds like it belongs to the same game.
+     [note, eighth, lengthInEighths]
+     ------------------------------------------------------------------ */
+  const F8 = 0.155;                       // one eighth
+  const FANFARE_LEAD = [
+    ['D5',  0, 1], ['F#5', 1, 1], ['A5',  2, 1], ['D6',  3, 3],
+    ['C#6', 6, 1], ['D6',  7, 1], ['E6',  8, 1], ['F#6', 9, 3],
+    ['E6', 12, 1], ['F#6',13, 1], ['G6', 14, 1], ['A6', 15, 4],
+    ['G6', 19, 1], ['F#6',20, 1], ['E6', 21, 1], ['D6', 22, 2],
+    ['A5', 24, 1], ['B5', 25, 1], ['C#6',26, 1], ['D6', 27, 2],
+    ['F#6',29, 1], ['A6', 30, 8],
+  ];
+  // Only under the held notes — filling the quick runs too would turn to mush.
+  const FANFARE_HARM = [
+    ['A5',  3, 3], ['D6',  9, 3], ['F#6',15, 4], ['A5', 22, 2],
+    ['D6', 30, 8], ['F#6',30, 8],
+  ];
+  const FANFARE_BASS = [
+    ['D3',  0, 3], ['A2',  3, 3], ['D3',  6, 3], ['A2',  9, 3],
+    ['B2', 12, 3], ['G2', 15, 4], ['A2', 19, 3], ['D3', 22, 2],
+    ['A2', 24, 3], ['D3', 27, 3], ['D3', 30, 8],
+  ];
+
+  function fanfare() {
+    boot();
+    FANFARE_LEAD.forEach(([n, b, l]) => voice(N[n], b * F8, l * F8 * 0.94, { type: 'square', vol: 0.30, vibrato: l >= 3 ? 5 : 0 }));
+    FANFARE_HARM.forEach(([n, b, l]) => voice(N[n], b * F8, l * F8 * 0.94, { type: 'square', vol: 0.10 }));
+    FANFARE_BASS.forEach(([n, b, l]) => voice(N[n], b * F8, l * F8 * 0.92, { type: 'triangle', vol: 0.40 }));
+    for (const b of [0, 6, 12, 18, 24, 30]) noise(b * F8, 0.06, { vol: 0.26, hp: 400 });
+    for (let b = 1; b < 30; b += 2) noise(b * F8, 0.025, { vol: 0.075, hp: 5000 });
+    noise(30 * F8, 0.45, { vol: 0.24, hp: 900 });     // crash on the last chord
+  }
+
+  /* ------------------------------------------------------------------
+     LOSE — a pipe lament in D minor, ~8s. Bagpipes are a drone plus a reedy
+     melody, so that is what this is: D2 and A2 held underneath for the whole
+     piece (the fixed envelope's long tail does the dying-away for free), and
+     a heavily vibratoed melody over the top with a grace note flicked in
+     ahead of each long one, which is the ornament that makes a pipe sound
+     like a pipe rather than a flute.
+     [note, quarter, lengthInQuarters]
+     ------------------------------------------------------------------ */
+  const L4 = 0.30;                        // one quarter — slow
+  const LAMENT_MELODY = [
+    ['A4',  0, 3],
+    ['C5',  3, 1],
+    ['D5',  4, 4],
+    ['C5',  8, 1],
+    ['A4',  9, 3],
+    ['F4', 12, 2],
+    ['G4', 14, 1],
+    ['A4', 15, 3],
+    ['F4', 18, 1],
+    ['E4', 19, 1],
+    ['D4', 20, 6],
+  ];
+  // A step above the note it leads into, flicked in just before the beat.
+  const LAMENT_GRACE = [['B4', 4], ['E5', 9], ['B4', 15], ['E4', 20]];
+  const LAMENT_LEN = 26;
+
+  function lament() {
+    boot();
+    const total = LAMENT_LEN * L4;
+    voice(N['D2'], 0, total, { type: 'triangle', vol: 0.28 });
+    voice(N['A2'], 0, total, { type: 'triangle', vol: 0.19 });
+    LAMENT_MELODY.forEach(([n, b, l]) => voice(N[n], b * L4, l * L4 * 0.96, {
+      type: 'square', vol: 0.33, vibrato: l >= 3 ? 7 : 3,
+    }));
+    LAMENT_GRACE.forEach(([n, b]) => voice(N[n], b * L4 - 0.055, 0.05, { type: 'square', vol: 0.22 }));
+  }
+
   /* ---- one-shots ---- */
   const sfx = {
     blip:    () => voice(N['D5'], 0, 0.035, { type: 'square', vol: 0.09 }),
@@ -687,14 +798,15 @@ const Chip = (() => {
     select:  () => { voice(N['D5'], 0, 0.06, { vol: 0.3 }); voice(N['A5'], 0.06, 0.12, { vol: 0.3 }); },
     confirm: () => { ['D5','F#5','A5','D6'].forEach((n, i) => voice(N[n], i * 0.055, 0.14, { vol: 0.32 })); },
     thud:    () => { voice(N['D3'], 0, 0.22, { type: 'triangle', vol: 0.4, slide: 0.5 }); noise(0, 0.14, { vol: 0.22, hp: 400 }); },
-    win:     () => { ['D5','F#5','A5','D6','A5','D6','F#6','A6'].forEach((n, i) => voice(N[n], i * 0.1, 0.3, { vol: 0.34, vibrato: i > 5 ? 6 : 0 })); [0,.2,.4].forEach(t => noise(t, 0.1, { vol: 0.2 })); },
-    lose:    () => { ['A4','G4','F4','E4','D4','C#4','C4','B3'].forEach((n, i) => voice(N[n], i * 0.12, 0.24, { type: 'square', vol: 0.3 })); voice(N['D3'], 1.0, 0.7, { type: 'triangle', vol: 0.4, slide: 0.5 }); },
+    // The endings get whole pieces rather than stings — see above.
+    win:     fanfare,
+    lose:    lament,
   };
 
   return {
-    boot, startTheme, stopTheme, startLoading, stopLoading, sfx,
+    boot, startTheme, stopTheme, startLoading, stopLoading, hush, sfx,
     get loadBars() { return Math.floor(step / OST_BAR); },
-    toggle() { muted = !muted; if (muted) { stopLoading(); stopTheme(); if (master) master.gain.value = 0; } else if (master) master.gain.value = 0.30; return muted; },
+    toggle() { muted = !muted; if (muted) { stopLoading(); stopTheme(); hush(); if (master) master.gain.value = 0; } else if (master) master.gain.value = 0.30; return muted; },
     get muted() { return muted; },
   };
 })();
@@ -1148,6 +1260,9 @@ function devVerdict() {
 
 async function startRun() {
   Chip.boot();
+  // GO AGAIN off the ending screen means the fanfare or the lament is still
+  // playing. Cut it before the new run's own sounds start.
+  Chip.hush();
   Chip.sfx.confirm();
   $('start').disabled = true;
   try {
