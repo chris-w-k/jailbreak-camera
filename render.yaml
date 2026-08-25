@@ -23,6 +23,9 @@ services:
         sync: false
       - key: POSTHOG_HOST
         value: https://eu.i.posthog.com
+      # The shot clock, in seconds.
+      - key: SHOT_SECONDS
+        value: "30"
       # Abuse guards. Tune these once you see real traffic.
       - key: RUNS_PER_IP_PER_HOUR
         value: "5"
