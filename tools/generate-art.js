@@ -22,7 +22,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { STAGES, CHARACTER_SHEET, ART_STYLE } = require('../stages.js');
+const { STAGES, CHARACTER_SHEET, GUARD_SHEET, ART_STYLE } = require('../stages.js');
 
 const ROOT = path.join(__dirname, '..');
 const ASSETS = path.join(ROOT, 'assets');
@@ -101,7 +101,16 @@ async function makeImage({ prompt, referenceB64, referenceMime = 'image/png' }) 
   throw lastErr;
 }
 
-const buildPrompt = scene => `${ART_STYLE}\n\nSCENE: ${scene}\n\nCHARACTER: ${CHARACTER_SHEET}`;
+/**
+ * Stage 1 is the punk on his own. Every stage after it also carries the guard, so
+ * his sheet only goes in the prompt when he is actually in the picture — sending
+ * it for stage 1 invites the model to add a guard who should not be there.
+ */
+function buildPrompt(stage) {
+  let out = `${ART_STYLE}\n\nSCENE: ${stage.art}\n\nCHARACTER: ${CHARACTER_SHEET}`;
+  if (stage.guard) out += `\n\nSECOND CHARACTER: ${GUARD_SHEET}`;
+  return out;
+}
 
 async function resolveModel() {
   try {
@@ -153,7 +162,7 @@ async function resolveModel() {
     const t0 = Date.now();
     try {
       const img = await makeImage({
-        prompt: buildPrompt(STAGES[i].art),
+        prompt: buildPrompt(STAGES[i]),
         referenceB64: ref && ref.b64,
         referenceMime: ref && ref.mime,
       });
