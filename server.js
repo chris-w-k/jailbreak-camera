@@ -269,12 +269,21 @@ function getSession(id) {
  * console. Cached, because this runs on every state change.
  */
 const artCache = new Map();
-function artPath(index) {
-  if (!artCache.has(index)) {
-    artCache.set(index, fs.existsSync(path.join(ROOT, 'assets', `stage-${index + 1}.png`)) ? `/assets/stage-${index + 1}.png` : null);
+function assetPath(name) {
+  if (!artCache.has(name)) {
+    artCache.set(name, fs.existsSync(path.join(ROOT, 'assets', `${name}.png`)) ? `/assets/${name}.png` : null);
   }
-  return artCache.get(index);
+  return artCache.get(name);
 }
+function artPath(index) { return assetPath(`stage-${index + 1}`); }
+
+/**
+ * The two opening stills, under the same rule as the stage dioramas: named only
+ * when the file is there, so the client shows a holding frame instead of asking
+ * for something that does not exist. Resolved once at boot rather than per
+ * request — they cannot appear while the process is running.
+ */
+const INTRO_ART = ['intro-1', 'intro-2'].map(assetPath);
 
 /** What the client is allowed to know about the current position. */
 function statePayload(s) {
@@ -289,6 +298,7 @@ function statePayload(s) {
     shotSeconds: SHOT_SECONDS,
     over: s.over,
     stage: stage && !s.over ? { id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage) } : null,
+    intro: INTRO_ART,
     evidence: s.evidence,
   };
 }
@@ -461,7 +471,7 @@ function requireUnlocked(req) {
 // http
 // ---------------------------------------------------------------------------
 
-const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#141419"/><g fill="#8b5cf6"><rect x="2" y="4" width="12" height="9"/><rect x="6" y="2" width="4" height="2"/></g><circle cx="8" cy="8.5" r="2.5" fill="#141419"/><circle cx="8" cy="8.5" r="1.2" fill="#c4a6ff"/></svg>`;
+const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#191919"/><g fill="#8b5cf6"><rect x="2" y="4" width="12" height="9"/><rect x="6" y="2" width="4" height="2"/></g><circle cx="8" cy="8.5" r="2.5" fill="#191919"/><circle cx="8" cy="8.5" r="1.2" fill="#c4a6ff"/></svg>`;
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -478,9 +488,9 @@ const server = http.createServer(async (req, res) => {
     // Stage art. Explicitly numbered rather than a general static handler, so
     // there is nothing to get wrong about path traversal. A missing file 404s
     // and the client falls back to its placeholder panel.
-    const art = /^\/assets\/stage-([1-9][0-9]?)\.png$/.exec(url.pathname);
+    const art = /^\/assets\/(stage-[1-9][0-9]?|intro-[12])\.png$/.exec(url.pathname);
     if (req.method === 'GET' && art) {
-      const buf = readBinIfExists(path.join(ROOT, 'assets', `stage-${art[1]}.png`));
+      const buf = readBinIfExists(path.join(ROOT, 'assets', `${art[1]}.png`));
       if (!buf) return json(res, 404, { error: 'no art yet' });
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
       return res.end(buf);
@@ -594,6 +604,10 @@ async function resolveModels() {
     console.log(artCount === TOTAL_STAGES
       ? `     art   : all ${TOTAL_STAGES} present`
       : `     \x1b[90mart   : ${artCount}/${TOTAL_STAGES} — run \`npm run art\` to generate the rest\x1b[0m`);
+    const introCount = INTRO_ART.filter(Boolean).length;
+    console.log(introCount === 2
+      ? `     intro : both stills present`
+      : `     \x1b[90mintro : ${introCount}/2 — add assets/intro-1.png and intro-2.png\x1b[0m`);
     console.log(ACCESS_CODE
       ? `     gate  : ON · ${RUNS_PER_IP_PER_HOUR} runs/ip/hr · ${RUNS_PER_DAY}/day · ${PHOTOS_PER_RUN} photos/run`
       : `     \x1b[90mgate  : off (set ACCESS_CODE to require one)\x1b[0m`);
