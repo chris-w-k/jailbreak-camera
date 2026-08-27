@@ -59,7 +59,16 @@
     min-height:100%; background:var(--bg); color:var(--ink);
     font-family:var(--body); font-weight:700;
     display:flex; align-items:center; justify-content:center;
-    padding:18px 16px 26px; overflow-x:hidden;
+    overflow-x:hidden;
+    /* The app opens this as a fullscreen portrait webview, so there is no
+       browser chrome between the page and the notch, the dynamic island or the
+       home indicator. In a normal browser every inset is 0 and these collapse
+       back to the plain numbers. */
+    padding:
+      max(18px, env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right))
+      max(26px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
   }
   /* The per-screen gradient survives the repaint, but as a tonal shift rather
      than a change of colour: a few points of hue over the charcoal, enough to
@@ -393,7 +402,8 @@
 
   /* ---------- chrome ---------- */
   .mute{
-    position:fixed; top:14px; right:14px; z-index:1000; width:44px; height:44px;
+    position:fixed; z-index:1000; width:44px; height:44px;
+    top:calc(14px + env(safe-area-inset-top)); right:calc(14px + env(safe-area-inset-right));
     border:1px solid var(--line); border-radius:50%; background:var(--panel-2);
     color:var(--ink); font-size:17px; cursor:pointer; box-shadow:0 4px 0 var(--edge);
     display:flex; align-items:center; justify-content:center;
@@ -552,6 +562,11 @@
         <div class="loot-hint" data-t="evidence_tap">WHAT YOU ACTUALLY HANDED HIM</div>
         <div class="loot-grid" id="end-grid"></div>
       </div>
+      <!-- Inside the app the run ends by completing the quest, so FINISH is the
+           primary action there and GO AGAIN is demoted to a second choice. In a
+           plain browser there is no quest to complete: FINISH stays hidden and
+           GO AGAIN is the only button, exactly as before. -->
+      <button class="btn big gap hide" id="end-finish" data-t="finish">FINISH</button>
       <button class="btn big gap" id="end-again" data-t="restart">GO AGAIN</button>
     </div>
   </section>
@@ -1066,6 +1081,7 @@ const Lang = (() => {
     caught_title: 'CAUGHT', caught_sub: 'Three strikes and the guard was already behind you.',
     caught_far: 'YOU GOT TO {scene}', escaped_title: 'OUT!',
     escaped_sub: 'Seven rooms, seven things you found lying around.', restart: 'GO AGAIN',
+    finish: 'FINISH', finish_wait: 'Finishing up — tap again if nothing happens.',
     evidence_title: 'THE EVIDENCE', evidence_tap: 'WHAT YOU ACTUALLY HANDED HIM',
     err_system: 'SYSTEM ERROR', err_camera: 'CAMERA UNAVAILABLE',
     err_try: 'TRY AGAIN', err_new: 'START A NEW RUN',
@@ -1312,6 +1328,94 @@ const Camera = (() => {
 })();
 
 /* =========================================================================
+   THE NOVAPALS WEBVIEW BRIDGE
+
+   This page is also opened as a quest activity inside the NovaPals app, in a
+   fullscreen portrait webview (NJA-2872). The app covers it with a loading
+   overlay and waits for the page to say it is ready; until that message lands
+   the child is watching a spinner and nothing else, which is exactly what QA
+   hit. Two messages, and only two:
+
+     NovaPals.Prototype.Start   the game is on screen — lift the overlay
+     NovaPals.Prototype.End     the run is finished — complete the quest, award
+                                the gems, close the webview
+
+   On shape: the app's handleWebViewPostMessage is the other side of a boundary
+   this page cannot read, and react-native-webview delivers every message as a
+   string. So each one goes twice — once as the bare event name, once as JSON
+   carrying that name under type, event AND name. A handler keyed on any of
+   those sees it; the others fail to parse and ignore it. If the real contract
+   turns out to be something else, this is the only function to change.
+
+   Start is idempotent — it hides an overlay — so it is repeated, because a
+   missed Start strands the player on that spinner for ever. End is not: it
+   completes a quest and pays out, so it is only ever sent from an explicit tap
+   on FINISH, and the button locks itself for four seconds so a double-tap
+   cannot pay out twice.
+   ========================================================================= */
+const Bridge = (() => {
+  const START = 'NovaPals.Prototype.Start';
+  const END = 'NovaPals.Prototype.End';
+  let startSends = 0, endSends = 0;
+
+  /** react-native-webview injects this into the page before our scripts run. */
+  function host() {
+    const rn = window.ReactNativeWebView;
+    return rn && typeof rn.postMessage === 'function' ? rn : null;
+  }
+
+  function send(name) {
+    const rn = host();
+    const payloads = [
+      name,
+      JSON.stringify({ type: name, event: name, name, source: 'jailbreak-camera' }),
+    ];
+    for (const payload of payloads) {
+      try { if (rn) rn.postMessage(payload); }
+      catch (e) { console.warn('[NovaPals] bridge failed:', e && e.message); }
+      // And up to a parent frame, so the same page still works if it is ever
+      // embedded in an iframe instead of a native webview. Skipped entirely
+      // when there is no parent, so a plain tab sends nothing at all.
+      try { if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*'); }
+      catch { /* cross-origin parent that won't take it; nothing to do */ }
+    }
+    console.log('[NovaPals] ->', name, rn ? '(webview)' : '(no host — standalone browser)');
+  }
+
+  return {
+    /** True when we are running inside the app rather than a plain browser. */
+    get inApp() { return !!host(); },
+    get startSends() { return startSends; },
+    get endSends() { return endSends; },
+
+    /**
+     * The game is painted and the overlay can go. Called as early as possible —
+     * before /api/health, which on a cold Render instance can take half a
+     * minute — and then twice more, in case the app's listener was not attached
+     * when the first one went out.
+     */
+    ready() {
+      if (startSends) return;
+      startSends++;
+      send(START);
+      setTimeout(() => { startSends++; send(START); }, 1200);
+      setTimeout(() => { startSends++; send(START); }, 3500);
+    },
+
+    /**
+     * The player finished and tapped FINISH. Only ever called from that tap:
+     * backing out or closing the webview must NOT complete the quest, so there
+     * is deliberately no End on pagehide.
+     */
+    finish() {
+      endSends++;
+      send(END);
+      return endSends;
+    },
+  };
+})();
+
+/* =========================================================================
    GAME
    ========================================================================= */
 let S = null;            // the server's view of the run
@@ -1389,18 +1493,43 @@ function paintHud(stagePrefix) {
 
 /* ---- boot ---- */
 async function boot() {
-  Speech.init();
-  Lang.set('en');
-  buildLangs();
-  applyText(document);
+  // Paint and announce BEFORE anything slow or fallible. The app's overlay is up
+  // until Bridge.ready() lands, and a cold Render free instance can sit on
+  // /api/health for half a minute — the child should be looking at the title
+  // screen with a button that is not armed yet, not at a spinner with no end.
+  // The finally is the belt: if any of this throws, the overlay still lifts.
+  try {
+    Speech.init();
+    const given = urlLang();
+    Lang.set(given || 'en');
+    buildLangs();
+    applyText(document);
+
+    if (Bridge.inApp) {
+      // In a quest, finishing means completing the quest, not looping.
+      $('end-finish').classList.remove('hide');
+      $('end-again').className = 'btn ghost gap';
+    }
+    if (given) {
+      // The app chose the language; the picker would only be a way to break it.
+      $('langs').classList.add('hide');
+      document.querySelector('.lang-label').classList.add('hide');
+    }
+
+    $('start').disabled = true;   // armed once we know the server is there
+    show('title');
+  } finally {
+    Bridge.ready();
+  }
 
   try { health = await (await fetch('/api/health')).json(); }
   catch (e) { health = {}; }
   Analytics.init(health.posthog);
-  Analytics.register({ mock_mode: !!health.mock });
+  Analytics.register({ mock_mode: !!health.mock, in_webview: Bridge.inApp });
+  Analytics.capture('page_ready', { in_webview: Bridge.inApp, start_sends: Bridge.startSends });
 
-  if (health.gated && !health.unlocked) { show('gate'); $('code').focus(); return; }
-  show('title');
+  $('start').disabled = false;
+  if (health.gated && !health.unlocked) { show('gate'); $('code').focus(); }
 }
 
 async function unlock() {
@@ -1418,6 +1547,18 @@ async function unlock() {
   } finally {
     $('unlock').disabled = false;
   }
+}
+
+/**
+ * ?lang=es — the app knows which language the child is learning in and passes it
+ * on the webview URL, which is the only way this works as a quest activity. When
+ * one is supplied the on-screen picker goes away: the app's choice is not the
+ * child's to change halfway through a quest. Lang.set validates it and falls
+ * back to English, so a nonsense value is harmless.
+ */
+function urlLang() {
+  const l = (new URLSearchParams(location.search).get('lang') || '').slice(0, 5).toLowerCase();
+  return l || null;
 }
 
 /** ?stage=4 jumps straight in, for testing stage 5 without playing four stages. */
@@ -1958,7 +2099,33 @@ $('v-go').addEventListener('click', () => {
   if ($('v-go').dataset.next === 'brief') brief(); else openCamera();
 });
 $('end-again').addEventListener('click', () => { Speech.stop(); startRun(); });
-$('err-again').addEventListener('click', () => { Speech.stop(); show('title'); });
+
+/**
+ * FINISH — the only thing in the game that completes the quest. The app closes
+ * the webview when it gets the message, so normally this button's own state is
+ * never seen again. If it IS still here four seconds later the message did not
+ * land, and saying so beats leaving a dead button: a second tap sends another,
+ * which cannot double-pay, because a webview that received the first one would
+ * have closed before the child could tap again.
+ */
+$('end-finish').addEventListener('click', () => {
+  const btn = $('end-finish');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  Speech.stop();
+  Chip.hush();
+  Chip.sfx.confirm();
+  Analytics.capture('quest_finished', {
+    outcome: document.body.dataset.outcome || null,
+    objects_found: (S && S.evidence ? S.evidence.length : 0),
+    attempt: Bridge.endSends + 1,
+  });
+  Bridge.finish();
+  setTimeout(() => {
+    btn.disabled = false;
+    toast(Lang.t('finish_wait'));
+  }, 4000);
+});
 
 // Space is the shutter, and only that — nothing else on this screen wants it.
 document.addEventListener('keydown', e => {
