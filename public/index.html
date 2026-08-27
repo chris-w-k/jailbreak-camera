@@ -890,27 +890,41 @@ const Chip = (() => {
 
   /* ------------------------------------------------------------------
      INTRO — the bed under the two opening stills. D minor at 76bpm, four
-     bars on a loop: a slow rocking bass (D - D - Bb - A), a quiet pad a
-     fifth up filling the middle, and a thin descending phrase over the
-     top. The only percussion is a soft double thump on the odd beats,
+     bars that loop: i - i - VI - v, or D - D - Bb - A. The bass is a rocking
+     pulse rather than held notes — root on the beat, fifth on the upbeat —
+     because the voice envelope up in voiceAt() is built for short chiptune
+     notes and hard-decays to nothing over a long one. A held D2 reads as a
+     thump and then four seconds of silence; a pulse holds the floor. Over it
+     a thin descending phrase, and a soft double thump on beats one and three
      because the punk is sitting still and the music should be too.
 
-     introLift() fires when the second still arrives — "I've gotta get out
-     of here" — and puts a rising D minor arpeggio and a hit on top of the
-     same loop, so the mood turns without the music having to stop.
+     introLift() fires when the second still arrives — "I've gotta get out of
+     here" — and puts a rising D minor arpeggio and a hit on top of the same
+     loop, so the mood turns without the music having to stop.
+
+     Levels are the point here. This plays under a speechSynthesis voiceover
+     on a phone speaker, so the bed is deliberately mixed at around -22 dBFS:
+     an earlier version sat 10dB lower and was inaudible in the room, which is
+     the same mistake the first shot-clock pips made.
      ------------------------------------------------------------------ */
   const I4 = 60 / 76;                  // one quarter, ~0.79s
   const INTRO_LEN = 16;                // quarters in the loop (4 bars of 4)
-  const INTRO_BASS = [['D2',0,4],['D2',4,4],['A#2',8,4],['A2',12,4]];
-  const INTRO_PAD  = [['A3',0,4],['F3',4,4],['D3',8,4],['E3',12,4]];
-  const INTRO_TOP  = [['D5',2,2],['C5',6,1],['A4',7,3],['F4',10,2],['E4',14,2]];
+  // one [root, fifth] per bar
+  const INTRO_CHORDS = [['D2','A2'], ['D2','A2'], ['A#2','F3'], ['A2','E3']];
+  const INTRO_TOP = [['D5',2,2], ['C5',6,1], ['A4',7,2], ['F4',10,2], ['E4',14,2]];
   let introTimer = null;
 
   function introOnce(offset = 0) {
-    INTRO_BASS.forEach(([n, b, l]) => voice(N[n], offset + b * I4, l * I4 * 0.96, { type: 'triangle', vol: 0.34 }));
-    INTRO_PAD .forEach(([n, b, l]) => voice(N[n], offset + b * I4, l * I4 * 0.94, { type: 'triangle', vol: 0.11 }));
-    INTRO_TOP .forEach(([n, b, l]) => voice(N[n], offset + b * I4, l * I4 * 0.90, { type: 'square', vol: 0.17, vibrato: l >= 3 ? 4 : 0 }));
-    for (let q = 0; q < INTRO_LEN; q += 2) noise(offset + q * I4, 0.07, { vol: q % 4 === 0 ? 0.075 : 0.04, hp: 220 });
+    for (let q = 0; q < INTRO_LEN; q++) {
+      const [root, fifth] = INTRO_CHORDS[Math.floor(q / 4)];
+      voice(N[root],  offset + q * I4,           I4 * 0.55, { type: 'triangle', vol: 0.74 });
+      voice(N[fifth], offset + (q + 0.5) * I4,   I4 * 0.40, { type: 'triangle', vol: 0.36 });
+      if (q % 4 === 0) noise(offset + q * I4, 0.09, { vol: 0.16, hp: 200 });
+      if (q % 4 === 2) noise(offset + q * I4, 0.05, { vol: 0.07, hp: 2600 });
+    }
+    INTRO_TOP.forEach(([n, b, l]) => voice(N[n], offset + b * I4, l * I4 * 0.8, {
+      type: 'square', vol: 0.41, vibrato: l >= 2 ? 3 : 0,
+    }));
   }
   function startIntro() {
     boot(); stopIntro();
@@ -921,10 +935,10 @@ const Chip = (() => {
 
   function introLift() {
     boot();
-    ['D4', 'F4', 'A4', 'D5', 'F5'].forEach((n, i) => voice(N[n], i * 0.085, 0.22, { type: 'square', vol: 0.26 }));
-    voice(N['A5'], 0.425, 0.9, { type: 'square', vol: 0.24, vibrato: 5 });
-    voice(N['D3'], 0, 0.9, { type: 'triangle', vol: 0.40 });
-    noise(0, 0.13, { vol: 0.20, hp: 500 });
+    ['D4', 'F4', 'A4', 'D5', 'F5'].forEach((n, i) => voice(N[n], i * 0.085, 0.22, { type: 'square', vol: 0.34 }));
+    voice(N['A5'], 0.425, 0.9, { type: 'square', vol: 0.32, vibrato: 5 });
+    voice(N['D3'], 0, 0.9, { type: 'triangle', vol: 0.46 });
+    noise(0, 0.13, { vol: 0.22, hp: 500 });
   }
 
   /* ---- one-shots ---- */
