@@ -56,6 +56,11 @@ function normLang(l) {
 
 // --- abuse guards (all optional; unset = off, which is what you want locally) ---
 const ACCESS_CODE = process.env.ACCESS_CODE || '';               // '' = no gate
+// Set either of these to 0 to turn that limit off. Worth having: when the game
+// is opened as a webview inside the app, every player on a mobile network can
+// arrive from the same carrier NAT address, and a per-IP cap then locks real
+// users out of each other's quota. 0 is off rather than "no runs allowed",
+// because the other reading is a very easy way to take the game down.
 const RUNS_PER_IP_PER_HOUR = Number(process.env.RUNS_PER_IP_PER_HOUR || 5);
 const RUNS_PER_DAY = Number(process.env.RUNS_PER_DAY || 250);    // global backstop on the bill
 // A run is 7 stages x 3 attempts = 21 photos at worst. This is the per-session
@@ -451,12 +456,12 @@ let dayStamps = [];
 function checkRate(req) {
   const now = Date.now();
   dayStamps = dayStamps.filter(t => now - t < 864e5);
-  if (dayStamps.length >= RUNS_PER_DAY) {
+  if (RUNS_PER_DAY > 0 && dayStamps.length >= RUNS_PER_DAY) {
     throw Object.assign(new Error('This demo has hit its daily limit. Try again tomorrow.'), { status: 429 });
   }
   const ip = clientIP(req);
   const hits = (ipHits.get(ip) || []).filter(t => now - t < 36e5);
-  if (hits.length >= RUNS_PER_IP_PER_HOUR) {
+  if (RUNS_PER_IP_PER_HOUR > 0 && hits.length >= RUNS_PER_IP_PER_HOUR) {
     throw Object.assign(new Error(`You've played ${RUNS_PER_IP_PER_HOUR} runs this hour — that's the limit. Come back later.`), { status: 429 });
   }
   hits.push(now); ipHits.set(ip, hits); dayStamps.push(now);
@@ -609,8 +614,9 @@ async function resolveModels() {
       ? `     intro : both stills present`
       : `     \x1b[90mintro : ${introCount}/2 — add assets/intro-1.png and intro-2.png\x1b[0m`);
     console.log(ACCESS_CODE
-      ? `     gate  : ON · ${RUNS_PER_IP_PER_HOUR} runs/ip/hr · ${RUNS_PER_DAY}/day · ${PHOTOS_PER_RUN} photos/run`
+      ? `     gate  : ON — a code is required, so app users cannot play`
       : `     \x1b[90mgate  : off (set ACCESS_CODE to require one)\x1b[0m`);
+    console.log(`     caps  : ${RUNS_PER_IP_PER_HOUR || 'off'} runs/ip/hr · ${RUNS_PER_DAY || 'off'}/day · ${PHOTOS_PER_RUN} photos/run`);
     console.log('');
     console.log(`     \x1b[90mthe camera needs https — use the Render URL or a tunnel to test on a phone\x1b[0m\n`);
   });
