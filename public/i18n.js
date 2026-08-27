@@ -43,6 +43,14 @@ window.I18N = {
       cam_retry: 'TRY THE CAMERA AGAIN',
 
       hud_stage: 'STAGE {n}/{total}',
+      // The punk's own words, so English in every language — same rule as the
+      // asks in stages.js, because an English voice is reading them aloud.
+      intro_1: 'Oh no mate, I’m never going to make the show at this rate...',
+      intro_2: 'I’ve gotta get out of here!!',
+      intro_next: 'NEXT',
+      intro_go: 'LET’S GO',
+      intro_skip: 'SKIP THE INTRO',
+
       brief_go: 'OPEN CAMERA',
       cam_shoot: 'SHOOT IT',
       cam_switch: 'PICK A PHOTO INSTEAD',
@@ -98,6 +106,10 @@ window.I18N = {
       cam_retry: 'PROBAR LA CÁMARA OTRA VEZ',
 
       hud_stage: 'FASE {n}/{total}',
+      intro_next: 'SIGUIENTE',
+      intro_go: '¡VAMOS!',
+      intro_skip: 'SALTAR LA INTRO',
+
       brief_go: 'ABRIR LA CÁMARA',
       cam_shoot: 'FOTO',
       cam_switch: 'MEJOR ELEGIR UNA FOTO',
@@ -153,6 +165,10 @@ window.I18N = {
       cam_retry: 'TENTAR A CÂMERA DE NOVO',
 
       hud_stage: 'FASE {n}/{total}',
+      intro_next: 'SEGUINTE',
+      intro_go: 'VAMOS LÁ',
+      intro_skip: 'PULAR A INTRO',
+
       brief_go: 'ABRIR A CÂMERA',
       cam_shoot: 'FOTOGRAFAR',
       cam_switch: 'ESCOLHER UMA FOTO',
@@ -208,6 +224,10 @@ window.I18N = {
       cam_retry: 'KAMERAYI TEKRAR DENE',
 
       hud_stage: 'BÖLÜM {n}/{total}',
+      intro_next: 'SONRAKİ',
+      intro_go: 'HADİ GİDELİM',
+      intro_skip: 'GİRİŞİ ATLA',
+
       brief_go: 'KAMERAYI AÇ',
       cam_shoot: 'ÇEK',
       cam_switch: 'FOTOĞRAF SEÇ',
