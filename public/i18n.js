@@ -76,6 +76,9 @@ window.I18N = {
       escaped_title: 'OUT!',
       escaped_sub: 'Seven rooms, seven things you found lying around. Not bad.',
       restart: 'GO AGAIN',
+      // Only ever seen inside the app, where finishing completes the quest.
+      finish: 'FINISH',
+      finish_wait: 'Finishing up — tap again if nothing happens.',
 
       evidence_title: 'THE EVIDENCE',
       evidence_tap: 'WHAT YOU ACTUALLY HANDED HIM',
@@ -135,6 +138,8 @@ window.I18N = {
       escaped_title: '¡FUERA!',
       escaped_sub: 'Siete salas, siete cosas que tenías por ahí tiradas. No está mal.',
       restart: 'OTRA VEZ',
+      finish: 'TERMINAR',
+      finish_wait: 'Terminando: toca otra vez si no pasa nada.',
 
       evidence_title: 'LAS PRUEBAS',
       evidence_tap: 'LO QUE LE PASASTE DE VERDAD',
@@ -194,6 +199,8 @@ window.I18N = {
       escaped_title: 'FUGIU!',
       escaped_sub: 'Sete salas, sete coisas que estavam ali jogadas. Nada mal.',
       restart: 'DE NOVO',
+      finish: 'CONCLUIR',
+      finish_wait: 'Finalizando: toque outra vez se nada acontecer.',
 
       evidence_title: 'AS PROVAS',
       evidence_tap: 'O QUE VOCÊ REALMENTE ENTREGOU',
@@ -253,6 +260,8 @@ window.I18N = {
       escaped_title: 'KAÇTI!',
       escaped_sub: 'Yedi oda, etrafta duran yedi şey. Fena değil.',
       restart: 'TEKRAR DENE',
+      finish: 'BİTİR',
+      finish_wait: 'Bitiriliyor: bir şey olmazsa tekrar dokun.',
 
       evidence_title: 'KANITLAR',
       evidence_tap: 'ONA GERÇEKTEN NE VERDİN',
