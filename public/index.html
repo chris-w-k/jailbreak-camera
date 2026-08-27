@@ -4,49 +4,50 @@
 <meta charset="utf-8">
 <title>JAILBREAK: CAMERA</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1D6AD6">
+<meta name="theme-color" content="#191919">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
 <style>
-
   /* =====================================================================
-     NOVAPALS DESIGN LANGUAGE
+     PRISON, BUILT OUT OF NOVAPALS PARTS
 
-     Taken from the app's onboarding and hub screens:
-       · Lilita One for every bit of chrome — headings, buttons, HUD, numbers.
-         All caps, tight, with a hard drop shadow. Nunito bold for anything you
-         actually read as a sentence.
-       · Bold vertical gradients per screen rather than one dark background.
-         Cyan-to-blue is "playing", pink-to-purple is "we need something from
-         you", coral is the front door.
-       · Extruded buttons: bright green face, darker green bottom edge, press
-         pushes into it. Green means go, orange means selected, white means a
-         choice you have not made yet.
-       · Everything rounded hard, everything sitting on a soft shadow, a fine
-         halftone dot grid over the gradient.
+     The app's *shapes* are all here — Lilita One for chrome and Nunito for
+     prose, extruded buttons that press into their own bottom edge, hard
+     rounded corners, cards on offset shadows, the halftone dot grid, hearts
+     for lives. What is gone is the app's palette. Cyan-to-blue and coral
+     read as a hub for six-year-olds, not as a man trying to get out of a
+     cell, and every screen fought the artwork.
 
-     The old build was a pixel-art CRT — Press Start 2P, scanlines, charcoal.
-     None of that survives; it was a different game's clothes.
+     So the surfaces come back to the original build's charcoal, retuned:
+     --bg is #191919 exactly, because that is the background Chris exported
+     the dioramas on. A square PNG dropped into the stage mount now has no
+     visible edge at all — the art ends and the wall carries on.
+
+     Everything saturated is an accent and there is only a handful of them:
+     purple is the game's own colour (buttons, the logo, "you are here"),
+     amber is time and attention, green is a pass, red is a fail. Nothing
+     else gets to be bright.
      ===================================================================== */
   :root{
-    /* ink */
-    --ink:#16224A;
-    --ink-soft:#44528A;
-    /* gradients */
-    --cyan:#2FC9F5;  --blue:#1D6AD6;
-    --pink:#FF5F9E;  --violet:#5E2BB8;
-    --coral:#FFA391; --rose:#FF5F8F;
-    --gold:#FFD34D;  --tang:#FF7A3D;
-    --slate:#7C88B0; --navy:#2A3360;
-    /* solids */
-    --green:#43DA65;   --green-dk:#1EA544;
-    --orange:#F9812A;  --orange-dk:#CF5F17;
-    --purple:#7C3FD5;  --purple-dk:#5A25A8;
-    --red:#FF4D5E;     --amber:#FFC53D;
-    --dead:#7FA6B4;    --dead-dk:#5D8593;
+    /* the wall — a neutral ladder up from the artwork's own background */
+    --bg:#191919;
+    --panel:#232323;      /* cards, the stage mount, the code field */
+    --panel-2:#2C2C2C;    /* something sitting on a card */
+    --line:#3A3A3A;       /* every border */
+    --edge:#0D0D0D;       /* the extrude and the type stroke */
+    --ink:#ECECEC;
+    --dim:#9A9A9A;
 
-    --shadow:rgba(12,22,60,.24);
+    /* accents, from the original build */
+    --purple:#8B5CF6;  --purple-dk:#5B21B6;  --purple-lt:#C4A6FF;
+    --green:#4ADE80;   --green-dk:#256F42;
+    --red:#F87171;     --red-dk:#7F2F2F;
+    --amber:#FBBF24;   --amber-dk:#8A6209;
+    --blue:#3B82F6;
+    --dead:#2E2E2E;    --dead-dk:#1C1C1C;
+
+    --shadow:rgba(0,0,0,.55);
     --display:'Lilita One','Arial Black',system-ui,sans-serif;
     --body:'Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;
     --r:20px;      /* cards */
@@ -55,32 +56,34 @@
   *{box-sizing:border-box; margin:0; padding:0;}
   html{height:100%;}
   body{
-    min-height:100%; color:#fff; font-family:var(--body); font-weight:700;
+    min-height:100%; background:var(--bg); color:var(--ink);
+    font-family:var(--body); font-weight:700;
     display:flex; align-items:center; justify-content:center;
     padding:18px 16px 26px; overflow-x:hidden;
-    /* Default is the playing gradient; show() swaps it per screen. */
-    background:linear-gradient(180deg,var(--cyan) 0%,var(--blue) 100%) fixed;
   }
-  /* The front door is warm; the game itself is cool; anything that needs
-     something from the player is the pink-to-purple one, same as the app's
-     permission screen. */
-  body[data-screen="title"]{background:linear-gradient(180deg,var(--coral) 0%,var(--rose) 100%) fixed;}
+  /* The per-screen gradient survives the repaint, but as a tonal shift rather
+     than a change of colour: a few points of hue over the charcoal, enough to
+     tell you where you are without ever leaving the tone of the artwork.
+     Purple where the game is talking to you, warm on a win, cold on a loss. */
+  body{background-image:linear-gradient(180deg,#1F1F1F 0%,#141414 100%); background-attachment:fixed;}
+  body[data-screen="title"]{background-image:linear-gradient(180deg,#2A2140 0%,#141419 100%);}
   body[data-screen="primer"],
   body[data-screen="gate"],
-  body[data-screen="error"]{background:linear-gradient(180deg,var(--pink) 0%,var(--violet) 100%) fixed;}
-  body[data-screen="end"][data-outcome="win"]{background:linear-gradient(180deg,var(--gold) 0%,var(--tang) 100%) fixed;}
-  body[data-screen="end"][data-outcome="lose"]{background:linear-gradient(180deg,var(--slate) 0%,var(--navy) 100%) fixed;}
+  body[data-screen="error"]{background-image:linear-gradient(180deg,#241C33 0%,#15151A 100%);}
+  body[data-screen="intro"]{background-image:linear-gradient(180deg,#1D1A26 0%,#111111 100%);}
+  body[data-screen="end"][data-outcome="win"]{background-image:linear-gradient(180deg,#2C2416 0%,#141310 100%);}
+  body[data-screen="end"][data-outcome="lose"]{background-image:linear-gradient(180deg,#231619 0%,#121011 100%);}
 
-  /* Halftone dots over the gradient, as on the app's onboarding screens. */
+  /* The app's halftone grid, dialled down to where it reads as concrete
+     rather than as confetti. */
   body::before{
     content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
-    background:radial-gradient(circle,rgba(255,255,255,.13) 1.5px,transparent 1.6px) 0 0/15px 15px;
+    background:radial-gradient(circle,rgba(255,255,255,.05) 1.5px,transparent 1.6px) 0 0/15px 15px;
   }
-  /* The title screen gets the splash's soft diagonal banding instead. */
   body[data-screen="title"]::before{
     background:
-      repeating-linear-gradient(115deg,rgba(255,255,255,.10) 0 22px,transparent 22px 58px),
-      radial-gradient(circle,rgba(255,255,255,.10) 1.5px,transparent 1.6px) 0 0/15px 15px;
+      repeating-linear-gradient(115deg,rgba(196,166,255,.045) 0 22px,transparent 22px 58px),
+      radial-gradient(circle,rgba(255,255,255,.05) 1.5px,transparent 1.6px) 0 0/15px 15px;
   }
 
   #app{width:100%; max-width:460px; position:relative; z-index:1;}
@@ -97,33 +100,41 @@
   }
   h1,h2,h3,h4{font-weight:400;}
 
-  /* ---------- buttons: the app's signature extruded pill ---------- */
+  /* ---------- buttons: the app's extruded pill, in the game's purple ---------- */
   .btn,.shutter{
-    font-size:17px; color:#fff; background:var(--green); border:0;
+    font-size:17px; color:#fff; background:var(--purple); border:0;
     border-radius:var(--r-btn); padding:16px 18px; width:100%; cursor:pointer;
     display:flex; align-items:center; justify-content:center; gap:11px;
-    box-shadow:0 5px 0 0 var(--green-dk),0 9px 16px var(--shadow);
-    text-shadow:0 2px 0 rgba(0,0,0,.20);
+    box-shadow:0 5px 0 0 var(--purple-dk),0 9px 18px var(--shadow);
+    text-shadow:0 2px 0 rgba(0,0,0,.35);
     transition:transform .07s ease,box-shadow .07s ease,filter .12s ease;
   }
-  .btn:hover:not(:disabled),.shutter:hover:not(:disabled){filter:brightness(1.07);}
+  .btn:hover:not(:disabled),.shutter:hover:not(:disabled){filter:brightness(1.12);}
   .btn:active:not(:disabled),.shutter:active:not(:disabled){
     transform:translateY(4px);
-    box-shadow:0 1px 0 0 var(--green-dk),0 3px 8px var(--shadow);
+    box-shadow:0 1px 0 0 var(--purple-dk),0 3px 8px var(--shadow);
   }
   .btn:disabled,.shutter:disabled{
-    background:var(--dead); box-shadow:0 5px 0 0 var(--dead-dk); cursor:default;
+    background:var(--dead); color:var(--dim); box-shadow:0 5px 0 0 var(--dead-dk);
+    cursor:default; text-shadow:none;
   }
   .btn.big{font-size:21px; padding:19px;}
-  /* A second-choice button: white, the way an unpicked option looks in the app. */
-  .btn.ghost{
-    background:rgba(255,255,255,.94); color:var(--ink); font-size:14px;
-    box-shadow:0 4px 0 0 rgba(12,22,60,.22),0 6px 12px var(--shadow);
+  /* The shutter is the one green thing on the camera screen: it is the go. */
+  .shutter{
+    margin-top:15px; font-size:20px; padding:20px; color:var(--edge);
+    background:var(--green); box-shadow:0 5px 0 0 var(--green-dk),0 9px 18px var(--shadow);
     text-shadow:none;
   }
-  .btn.ghost:active:not(:disabled){box-shadow:0 1px 0 0 rgba(12,22,60,.22);}
-  .shutter{margin-top:15px; font-size:20px; padding:20px;}
-  .shutter .lens{width:18px; height:18px; border-radius:50%; border:4px solid #fff; flex:none;}
+  .shutter:active:not(:disabled){box-shadow:0 1px 0 0 var(--green-dk),0 3px 8px var(--shadow);}
+  .shutter .lens{width:18px; height:18px; border-radius:50%; border:4px solid var(--edge); flex:none;}
+  /* A second-choice button: the unpicked option, dark instead of the app's white. */
+  .btn.ghost{
+    background:var(--panel-2); color:var(--dim); font-size:14px;
+    box-shadow:0 4px 0 0 var(--edge),0 6px 12px var(--shadow);
+    text-shadow:none;
+  }
+  .btn.ghost:hover:not(:disabled){color:var(--ink); filter:none; background:#343434;}
+  .btn.ghost:active:not(:disabled){box-shadow:0 1px 0 0 var(--edge);}
 
   /* ---------- title ---------- */
   #screen-title{text-align:center; padding:10px 0;}
@@ -132,24 +143,23 @@
      glyph outline and ignores -webkit-text-stroke, so it ghosts a second
      un-stroked word underneath. A filter shadows what was actually painted. */
   .logo .l1{
-    display:block; font-size:26px; color:#fff;
-    filter:drop-shadow(0 3px 0 rgba(12,22,60,.30));
+    display:block; font-size:26px; color:var(--purple-lt);
+    filter:drop-shadow(0 3px 0 var(--edge));
   }
   .logo .l2{
-    display:block; font-size:62px; margin-top:6px; color:var(--green);
-    -webkit-text-stroke:5px var(--ink); paint-order:stroke fill;
-    filter:drop-shadow(0 7px 0 rgba(12,22,60,.30));
+    display:block; font-size:62px; margin-top:6px; color:#fff;
+    -webkit-text-stroke:5px var(--edge); paint-order:stroke fill;
+    filter:drop-shadow(0 7px 0 var(--purple-dk));
     animation:bob 2.4s ease-in-out infinite;
   }
   @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-  /* three dots, standing in for the old pixel bar rule */
   .bars{
     height:10px; margin:22px auto; width:86px;
-    background:radial-gradient(circle,rgba(255,255,255,.85) 4px,transparent 4.5px) 0 0/29px 10px;
+    background:radial-gradient(circle,var(--purple) 4px,transparent 4.5px) 0 0/29px 10px;
   }
   .tag{
-    font-size:15px; line-height:1.5; color:rgba(255,255,255,.95);
-    margin-bottom:24px; padding:0 10px; text-shadow:0 2px 0 rgba(12,22,60,.18);
+    font-size:15px; line-height:1.5; color:var(--dim);
+    margin-bottom:24px; padding:0 10px;
   }
   .blink{animation:blink 1s steps(1) infinite;}
   @keyframes blink{50%{opacity:.25}}
@@ -157,45 +167,46 @@
   /* ---------- HUD ---------- */
   .hud{
     display:flex; justify-content:space-between; align-items:center;
-    font-size:14px; color:#fff; margin-bottom:12px; gap:10px;
-    text-shadow:0 2px 0 rgba(12,22,60,.22);
+    font-size:14px; color:var(--dim); margin-bottom:12px; gap:10px;
   }
-  .hud .scene{text-align:right; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:.95;}
+  .hud .scene{text-align:right; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--purple-lt);}
 
-  /* Attempts as hearts. The scratched tally marks were prison-wall furniture;
-     hearts say "lives" at a glance and match the app's toy register. */
+  /* Attempts as hearts — kept from the app pass, recoloured. */
   .tally{display:flex; gap:4px; flex:none; align-items:center;}
-  .mark{width:24px; height:24px; flex:none; color:var(--red); filter:drop-shadow(0 2px 0 rgba(12,22,60,.28));}
+  .mark{width:24px; height:24px; flex:none; color:var(--red); filter:drop-shadow(0 2px 0 var(--edge));}
   .mark.now{animation:beat 1s ease-in-out infinite;}
-  .mark.spent{color:rgba(255,255,255,.34); filter:none;}
+  .mark.spent{color:#333; filter:none;}
   @keyframes beat{0%,100%{transform:scale(1)}45%{transform:scale(1.18)}}
 
-  /* ---------- stage art ---------- */
+  /* ---------- stage art ----------
+     The mount is #191919, the same as the PNGs' own background, so a square
+     diorama has no visible edge inside it. The 1px line is what says "frame". */
   .stage{
     position:relative; border-radius:var(--r); overflow:hidden;
-    background:#fff; padding:6px;
-    box-shadow:0 8px 0 0 rgba(12,22,60,.20),0 14px 26px var(--shadow);
+    background:var(--bg); padding:5px; border:1px solid var(--line);
+    box-shadow:0 8px 0 0 var(--edge),0 16px 30px var(--shadow);
   }
-  .stage img{display:block; width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:14px;}
+  .stage img{display:block; width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:15px;}
 
   /* Holding frame until assets/stage-N.png exists. */
   .stage-ph{
-    aspect-ratio:1/1; border-radius:14px; display:flex; align-items:center;
+    aspect-ratio:1/1; border-radius:15px; display:flex; align-items:center;
     justify-content:center; position:relative;
     background:
-      radial-gradient(circle,rgba(22,34,74,.10) 2px,transparent 2.5px) 0 0/16px 16px,
-      linear-gradient(180deg,#EAF1FF 0%,#CFDDF6 100%);
+      repeating-linear-gradient(90deg,rgba(58,58,58,.9) 0 12px,transparent 12px 46px),
+      linear-gradient(180deg,#242424 0%,#171717 100%);
   }
-  .stage-ph .ph-name{font-size:22px; color:var(--ink); text-align:center; padding:0 24px; line-height:1.25;}
-  .stage-ph .ph-note{position:absolute; bottom:12px; right:14px; font-family:var(--body); font-size:11px; color:var(--ink-soft); opacity:.7;}
+  .stage-ph .ph-name{font-size:22px; color:var(--purple-lt); text-align:center; padding:0 24px; line-height:1.25;}
+  .stage-ph .ph-note{position:absolute; bottom:12px; right:14px; font-family:var(--body); font-size:11px; color:#555;}
 
-  /* The punk's line, as a proper speech bubble. */
+  /* The punk's line. White, because it is the one voice in the game and it
+     has to cut through a dark photograph. */
   .bubble{
     position:absolute; left:16px; right:16px; bottom:16px; z-index:3;
-    background:#fff; color:var(--ink); border-radius:16px;
+    background:#fff; color:#15151B; border-radius:16px;
     padding:14px 16px; font-family:var(--body); font-weight:800;
     font-size:16px; line-height:1.4;
-    box-shadow:0 5px 0 rgba(12,22,60,.20),0 10px 20px rgba(12,22,60,.28);
+    box-shadow:0 5px 0 var(--edge),0 12px 24px rgba(0,0,0,.6);
   }
   .bubble::after{
     content:''; position:absolute; left:28px; bottom:-11px;
@@ -208,32 +219,43 @@
 
   /* ---------- panels + copy ---------- */
   .below{padding:18px 0 0;}
-  .panel{padding:8px 4px; text-align:center;}
-  .prompt{font-size:14px; color:rgba(255,255,255,.9); margin-bottom:12px;}
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    padding:22px 18px; box-shadow:0 8px 0 0 var(--edge),0 16px 30px var(--shadow);
+  }
+  .prompt{font-size:14px; color:var(--dim); margin-bottom:12px; text-align:center;}
   .read{
     font-family:var(--body); font-weight:700; font-size:16px; line-height:1.55;
-    color:rgba(255,255,255,.96); text-shadow:0 1px 0 rgba(12,22,60,.14);
+    color:var(--ink);
   }
   .read + .read{margin-top:12px;}
-  .read.small{font-size:14px; color:rgba(255,255,255,.82);}
-  /* Inside a white card the same copy has to flip to ink. */
-  .card .read{color:var(--ink-soft); text-shadow:none;}
-  .card .read.small{color:var(--ink-soft); opacity:.85;}
+  .read.small{font-size:14px; color:var(--dim);}
+
+  /* ---------- the intro beats ----------
+     Two stills before the first cell. Same mount and same speech bubble as a
+     stage, so the intro reads as part of the game rather than as a cutscene
+     bolted on the front, plus a pair of pips saying how much of it is left. */
+  .beats{display:flex; gap:8px; justify-content:center; margin-top:16px;}
+  .beat-pip{
+    width:34px; height:6px; border-radius:99px; background:#333;
+    transition:background .2s;
+  }
+  .beat-pip.on{background:var(--purple);}
 
   /* ---------- camera ---------- */
   .cam{
-    position:relative; border-radius:var(--r); overflow:hidden; background:#0F1830;
-    box-shadow:0 8px 0 0 rgba(12,22,60,.20),0 14px 26px var(--shadow);
-    border:6px solid #fff;
+    position:relative; border-radius:var(--r); overflow:hidden; background:#0D0D0D;
+    box-shadow:0 8px 0 0 var(--edge),0 16px 30px var(--shadow);
+    border:5px solid var(--line);
   }
-  .cam video{display:block; width:100%; aspect-ratio:3/4; object-fit:cover; background:#0F1830;}
+  .cam video{display:block; width:100%; aspect-ratio:3/4; object-fit:cover; background:#0D0D0D;}
   .cam .frame{
     position:absolute; inset:96px 20px 20px; pointer-events:none; z-index:2;
-    border:3px dashed rgba(255,255,255,.6); border-radius:14px;
+    border:3px dashed rgba(255,255,255,.5); border-radius:14px;
   }
   .cam.timed .frame{bottom:60px;}
   .cam .frame::before,.cam .frame::after{
-    content:''; position:absolute; width:26px; height:26px; border:5px solid #fff; border-radius:6px;
+    content:''; position:absolute; width:26px; height:26px; border:5px solid var(--amber); border-radius:6px;
   }
   .cam .frame::before{top:-5px; left:-5px; border-right:0; border-bottom:0; border-radius:8px 0 0 0;}
   .cam .frame::after{bottom:-5px; right:-5px; border-left:0; border-top:0; border-radius:0 0 8px 0;}
@@ -241,21 +263,21 @@
      only thing guaranteed legible against whatever the camera is pointing at. */
   .cam .ask{
     position:absolute; left:12px; right:12px; top:12px; z-index:3;
-    background:#fff; color:var(--ink); border-radius:13px;
+    background:#fff; color:#15151B; border-radius:13px;
     padding:11px 13px; font-family:var(--body); font-weight:800;
     font-size:15px; line-height:1.35;
-    box-shadow:0 4px 0 rgba(12,22,60,.18);
+    box-shadow:0 4px 0 var(--edge);
   }
-  .cam-hint{text-align:center; font-size:12px; color:rgba(255,255,255,.85); margin-top:13px;}
+  .cam-hint{text-align:center; font-size:12px; color:var(--dim); margin-top:13px;}
 
   /* ---------- the shot clock ---------- */
   .clock{
     position:absolute; left:10px; right:10px; bottom:10px; z-index:4; height:40px;
-    background:rgba(15,24,48,.82); border-radius:13px;
+    background:rgba(13,13,13,.88); border:1px solid var(--line); border-radius:13px;
     display:flex; align-items:center; gap:11px; padding:0 13px;
   }
-  .clock .num{font-size:20px; color:#fff; flex:none; min-width:30px; text-align:center;}
-  .clock .rail{flex:1; height:12px; background:rgba(255,255,255,.20); border-radius:99px; overflow:hidden;}
+  .clock .num{font-size:20px; color:var(--ink); flex:none; min-width:30px; text-align:center;}
+  .clock .rail{flex:1; height:12px; background:#000; border-radius:99px; overflow:hidden;}
   .clock .fill{
     display:block; height:100%; width:100%; border-radius:99px;
     background:var(--green); transition:width .95s linear;
@@ -267,120 +289,126 @@
 
   /* ---------- the photo, being judged ---------- */
   .shot{
-    position:relative; border-radius:var(--r); overflow:hidden; background:#fff; padding:6px;
-    box-shadow:0 8px 0 0 rgba(12,22,60,.20),0 14px 26px var(--shadow);
+    position:relative; border-radius:var(--r); overflow:hidden;
+    background:var(--bg); padding:5px; border:1px solid var(--line);
+    box-shadow:0 8px 0 0 var(--edge),0 16px 30px var(--shadow);
   }
-  .shot img{display:block; width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:14px;}
+  .shot img{display:block; width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:15px;}
   .shot.busy::after{
-    content:''; position:absolute; left:6px; right:6px; height:40%; z-index:2; border-radius:14px;
-    background:linear-gradient(180deg,transparent,rgba(47,201,245,.35) 60%,rgba(255,255,255,.75));
+    content:''; position:absolute; left:5px; right:5px; height:40%; z-index:2; border-radius:15px;
+    background:linear-gradient(180deg,transparent,rgba(139,92,246,.28) 60%,rgba(196,166,255,.55));
     animation:scan 1.3s ease-in-out infinite;
   }
   @keyframes scan{0%{top:-40%}100%{top:100%}}
   .shot .stamp{
     position:absolute; left:16px; right:16px; bottom:16px; z-index:3;
-    padding:12px; border-radius:13px; font-size:17px; text-align:center; color:#fff;
-    background:var(--ink); box-shadow:0 4px 0 rgba(12,22,60,.30);
+    padding:12px; border-radius:13px; font-size:17px; text-align:center; color:var(--edge);
+    background:var(--ink); box-shadow:0 4px 0 var(--edge);
   }
-  .shot .stamp.pass{background:var(--green); box-shadow:0 4px 0 var(--green-dk);}
-  .shot .stamp.fail{background:var(--red); box-shadow:0 4px 0 #C22E3D;}
-  .shot .stamp.soft{background:var(--orange); box-shadow:0 4px 0 var(--orange-dk);}
+  .shot .stamp.pass{background:var(--green);}
+  .shot .stamp.fail{background:var(--red);}
+  .shot .stamp.soft{background:var(--amber);}
   .shot.empty{
-    aspect-ratio:3/4; display:flex; align-items:center; justify-content:center; border-radius:14px;
+    aspect-ratio:3/4; display:flex; align-items:center; justify-content:center; border-radius:15px;
     background:
-      radial-gradient(circle,rgba(22,34,74,.10) 2px,transparent 2.5px) 0 0/16px 16px,
-      linear-gradient(180deg,#EAF1FF 0%,#CFDDF6 100%);
+      repeating-linear-gradient(90deg,rgba(58,58,58,.9) 0 12px,transparent 12px 46px),
+      linear-gradient(180deg,#242424 0%,#171717 100%);
   }
-  .shot.empty .none{font-family:var(--display); font-size:20px; color:var(--ink-soft); letter-spacing:2px;}
+  .shot.empty .none{font-family:var(--display); font-size:20px; color:var(--dim); letter-spacing:2px;}
 
-  .load-title{font-size:26px; color:#fff; text-align:center; margin-bottom:16px; text-shadow:0 3px 0 rgba(12,22,60,.24);}
+  .load-title{font-size:26px; color:var(--ink); text-align:center; margin-bottom:16px;}
   .load-note{
-    font-family:var(--body); font-weight:700; font-size:15px; color:rgba(255,255,255,.9);
+    font-family:var(--body); font-weight:700; font-size:15px; color:var(--dim);
     text-align:center; min-height:34px; line-height:1.6; margin-top:14px;
   }
-  .free{font-size:13px; color:var(--amber); margin-top:12px; text-align:center; text-shadow:0 2px 0 rgba(12,22,60,.22);}
+  .free{font-size:13px; color:var(--amber); margin-top:12px; text-align:center;}
 
   /* ---------- endings ---------- */
   .card{
-    background:#fff; border-radius:var(--r); padding:26px 20px; text-align:center;
-    box-shadow:0 8px 0 0 rgba(12,22,60,.18),0 16px 30px var(--shadow);
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    padding:26px 20px; text-align:center;
+    box-shadow:0 8px 0 0 var(--edge),0 16px 30px var(--shadow);
   }
   .card .verdict{font-size:46px; line-height:1.05; margin-bottom:12px; color:var(--ink);}
-  .card .verdict.win{color:var(--green); -webkit-text-stroke:4px var(--ink); paint-order:stroke fill;}
-  .card .verdict.lose{color:var(--red); -webkit-text-stroke:4px var(--ink); paint-order:stroke fill;}
+  .card .verdict.win{color:var(--green); -webkit-text-stroke:4px var(--edge); paint-order:stroke fill;}
+  .card .verdict.lose{color:var(--red); -webkit-text-stroke:4px var(--edge); paint-order:stroke fill;}
   .card .got{
-    font-size:14px; color:#fff; background:var(--orange); display:inline-block;
+    font-size:14px; color:var(--edge); background:var(--amber); display:inline-block;
     margin-top:16px; padding:8px 15px; border-radius:99px;
-    box-shadow:0 3px 0 var(--orange-dk);
+    box-shadow:0 3px 0 var(--amber-dk);
   }
   .card .got:empty{display:none;}
 
-  .loot{margin-top:22px; border-top:3px solid rgba(22,34,74,.10); padding-top:18px; text-align:left;}
+  .loot{margin-top:22px; border-top:1px solid var(--line); padding-top:18px; text-align:left;}
   .loot h4{font-size:17px; color:var(--ink); margin-bottom:4px;}
-  .loot-hint{font-size:11px; color:var(--ink-soft); opacity:.75; margin-bottom:14px;}
+  .loot-hint{font-size:11px; color:var(--dim); margin-bottom:14px;}
   .loot-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
   .loot-item{
-    background:#F2F6FF; border:0; border-radius:14px; padding:11px 13px; text-align:left;
-    color:var(--ink); cursor:pointer; font-family:var(--body); font-weight:700;
-    box-shadow:0 3px 0 rgba(12,22,60,.14);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:14px;
+    padding:11px 13px; text-align:left; color:var(--ink); cursor:pointer;
+    font-family:var(--body); font-weight:700;
+    box-shadow:0 3px 0 var(--edge);
     transition:transform .07s ease,box-shadow .07s ease,background .12s;
   }
-  .loot-item:hover{background:#E4EDFF;}
-  .loot-item:active{transform:translateY(3px); box-shadow:0 0 0 rgba(12,22,60,.14);}
+  .loot-item:hover{background:#343434;}
+  .loot-item:active{transform:translateY(3px); box-shadow:0 0 0 var(--edge);}
   .loot-item .where{
     display:block; font-family:var(--display); text-transform:uppercase;
-    font-size:11px; color:var(--purple); letter-spacing:.6px;
+    font-size:11px; color:var(--purple-lt); letter-spacing:.6px;
   }
   .loot-item .what{display:block; margin-top:5px; font-size:15px; line-height:1.35; word-break:break-word;}
 
   /* ---------- language picker ---------- */
-  .lang-label{font-size:13px; color:rgba(255,255,255,.8); margin-top:26px;}
+  .lang-label{font-size:13px; color:var(--dim); margin-top:26px;}
   .langs{display:flex; gap:7px; justify-content:center; margin-top:11px; flex-wrap:wrap;}
   .lang-chip{
     font-family:var(--body); font-weight:800; font-size:13px;
-    background:rgba(255,255,255,.94); color:var(--ink); border:0;
+    background:var(--panel-2); color:var(--dim); border:1px solid var(--line);
     border-radius:11px; padding:10px 14px; cursor:pointer;
-    box-shadow:0 3px 0 rgba(12,22,60,.20);
+    box-shadow:0 3px 0 var(--edge);
     transition:transform .07s ease,box-shadow .07s ease;
   }
-  .lang-chip:active{transform:translateY(3px); box-shadow:0 0 0 rgba(12,22,60,.2);}
-  /* Selected is orange, exactly as a picked option is in the app. */
-  .lang-chip.on{background:var(--orange); color:#fff; box-shadow:0 3px 0 var(--orange-dk);}
+  .lang-chip:active{transform:translateY(3px); box-shadow:0 0 0 var(--edge);}
+  /* Selected is the game's purple, the way a picked option is orange in the app. */
+  .lang-chip.on{background:var(--purple); border-color:var(--purple-lt); color:#fff; box-shadow:0 3px 0 var(--purple-dk);}
 
   /* ---------- gate + error ---------- */
-  .err{background:#fff; border-radius:var(--r); padding:24px 20px; box-shadow:0 8px 0 0 rgba(12,22,60,.18),0 16px 30px var(--shadow); text-align:left;}
+  .err{text-align:left;}
   .err h3{font-size:22px; color:var(--red); margin-bottom:14px; text-align:center;}
   .err pre{
     font-family:var(--body); font-weight:700; font-size:13px; line-height:1.6;
-    color:var(--ink-soft); white-space:pre-wrap; word-break:break-word;
-    background:#F2F6FF; padding:13px; border-radius:12px; margin-bottom:16px;
+    color:var(--dim); white-space:pre-wrap; word-break:break-word;
+    background:#151515; border:1px solid var(--line);
+    padding:13px; border-radius:12px; margin-bottom:16px;
     max-height:190px; overflow:auto;
   }
   .code-input{
     font-size:26px; letter-spacing:8px; text-align:center; width:100%;
-    padding:16px 12px; color:var(--ink); background:#fff; border:0;
-    border-radius:14px; outline:none; box-shadow:0 4px 0 rgba(12,22,60,.2);
+    padding:16px 12px; color:var(--ink); background:#151515;
+    border:1px solid var(--line); border-radius:14px; outline:none;
+    box-shadow:0 4px 0 var(--edge);
   }
-  .code-input:focus{box-shadow:0 4px 0 var(--orange);}
-  .code-err{min-height:22px; margin-top:12px; font-size:14px; color:#fff; font-family:var(--body); font-weight:800;}
+  .code-input:focus{border-color:var(--purple); box-shadow:0 4px 0 var(--purple-dk);}
+  .code-err{min-height:22px; margin-top:12px; font-size:14px; color:var(--red); font-family:var(--body); font-weight:800; text-align:center;}
 
   /* ---------- chrome ---------- */
   .mute{
     position:fixed; top:14px; right:14px; z-index:1000; width:44px; height:44px;
-    border:0; border-radius:50%; background:rgba(255,255,255,.92); color:var(--ink);
-    font-size:17px; cursor:pointer; box-shadow:0 4px 0 rgba(12,22,60,.22);
+    border:1px solid var(--line); border-radius:50%; background:var(--panel-2);
+    color:var(--ink); font-size:17px; cursor:pointer; box-shadow:0 4px 0 var(--edge);
     display:flex; align-items:center; justify-content:center;
   }
-  .mute:active{transform:translateY(3px); box-shadow:0 1px 0 rgba(12,22,60,.22);}
-  .foot{text-align:center; font-size:12px; color:rgba(255,255,255,.72); margin-top:22px;}
+  .mute:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
+  .foot{text-align:center; font-size:12px; color:#7A7A7A; margin-top:22px;}
 
   /* Something went wrong but the run is fine — says so and gets out of the way. */
   .toast{
     position:fixed; left:16px; right:16px; bottom:16px; z-index:1001; max-width:428px;
-    margin:0 auto; padding:14px 16px; background:#fff; color:var(--ink);
-    border-radius:15px; font-family:var(--body); font-weight:800; font-size:14px;
+    margin:0 auto; padding:14px 16px; background:var(--panel-2); color:var(--ink);
+    border:1px solid var(--line); border-radius:15px;
+    font-family:var(--body); font-weight:800; font-size:14px;
     line-height:1.45; text-align:center;
-    box-shadow:0 5px 0 var(--orange),0 12px 24px rgba(12,22,60,.3);
+    box-shadow:0 5px 0 var(--amber-dk),0 12px 24px rgba(0,0,0,.7);
     animation:rise .2s ease;
   }
   .toast.hide{display:none !important;}
@@ -440,6 +468,19 @@
         <button class="btn ghost gap" id="pick-instead" data-t="cam_pick">CHOOSE A PHOTO</button>
         <button class="btn ghost gap" id="cam-retry" data-t="cam_retry">TRY THE CAMERA AGAIN</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ================= INTRO =================
+       Two stills that set up why he wants out at all. Built out of the same
+       parts as a stage brief — mount, speech bubble, one button — because the
+       intro is the game teaching you how it talks, not a cutscene. -->
+  <section id="screen-intro" class="screen">
+    <div class="stage" id="intro-art"></div>
+    <div class="below">
+      <div class="beats" id="intro-beats"></div>
+      <button class="btn big gap" id="intro-go" data-t="intro_next">NEXT</button>
+      <button class="btn ghost gap" id="intro-skip" data-t="intro_skip">SKIP THE INTRO</button>
     </div>
   </section>
 
@@ -847,6 +888,45 @@ const Chip = (() => {
     LAMENT_GRACE.forEach(([n, b]) => voice(N[n], b * L4 - 0.055, 0.05, { type: 'square', vol: 0.22 }));
   }
 
+  /* ------------------------------------------------------------------
+     INTRO — the bed under the two opening stills. D minor at 76bpm, four
+     bars on a loop: a slow rocking bass (D - D - Bb - A), a quiet pad a
+     fifth up filling the middle, and a thin descending phrase over the
+     top. The only percussion is a soft double thump on the odd beats,
+     because the punk is sitting still and the music should be too.
+
+     introLift() fires when the second still arrives — "I've gotta get out
+     of here" — and puts a rising D minor arpeggio and a hit on top of the
+     same loop, so the mood turns without the music having to stop.
+     ------------------------------------------------------------------ */
+  const I4 = 60 / 76;                  // one quarter, ~0.79s
+  const INTRO_LEN = 16;                // quarters in the loop (4 bars of 4)
+  const INTRO_BASS = [['D2',0,4],['D2',4,4],['A#2',8,4],['A2',12,4]];
+  const INTRO_PAD  = [['A3',0,4],['F3',4,4],['D3',8,4],['E3',12,4]];
+  const INTRO_TOP  = [['D5',2,2],['C5',6,1],['A4',7,3],['F4',10,2],['E4',14,2]];
+  let introTimer = null;
+
+  function introOnce(offset = 0) {
+    INTRO_BASS.forEach(([n, b, l]) => voice(N[n], offset + b * I4, l * I4 * 0.96, { type: 'triangle', vol: 0.34 }));
+    INTRO_PAD .forEach(([n, b, l]) => voice(N[n], offset + b * I4, l * I4 * 0.94, { type: 'triangle', vol: 0.11 }));
+    INTRO_TOP .forEach(([n, b, l]) => voice(N[n], offset + b * I4, l * I4 * 0.90, { type: 'square', vol: 0.17, vibrato: l >= 3 ? 4 : 0 }));
+    for (let q = 0; q < INTRO_LEN; q += 2) noise(offset + q * I4, 0.07, { vol: q % 4 === 0 ? 0.075 : 0.04, hp: 220 });
+  }
+  function startIntro() {
+    boot(); stopIntro();
+    introOnce(0.05);
+    introTimer = setInterval(() => introOnce(0.02), INTRO_LEN * I4 * 1000);
+  }
+  function stopIntro() { clearInterval(introTimer); introTimer = null; }
+
+  function introLift() {
+    boot();
+    ['D4', 'F4', 'A4', 'D5', 'F5'].forEach((n, i) => voice(N[n], i * 0.085, 0.22, { type: 'square', vol: 0.26 }));
+    voice(N['A5'], 0.425, 0.9, { type: 'square', vol: 0.24, vibrato: 5 });
+    voice(N['D3'], 0, 0.9, { type: 'triangle', vol: 0.40 });
+    noise(0, 0.13, { vol: 0.20, hp: 500 });
+  }
+
   /* ---- one-shots ---- */
   const sfx = {
     blip:    () => voice(N['D5'], 0, 0.035, { type: 'square', vol: 0.09 }),
@@ -878,9 +958,9 @@ const Chip = (() => {
   };
 
   return {
-    boot, startTheme, stopTheme, startLoading, stopLoading, hush, sfx,
+    boot, startTheme, stopTheme, startLoading, stopLoading, startIntro, stopIntro, introLift, hush, sfx,
     get loadBars() { return Math.floor(step / OST_BAR); },
-    toggle() { muted = !muted; if (muted) { stopLoading(); stopTheme(); hush(); if (master) master.gain.value = 0; } else if (master) master.gain.value = 0.30; return muted; },
+    toggle() { muted = !muted; if (muted) { stopLoading(); stopTheme(); stopIntro(); hush(); if (master) master.gain.value = 0; } else if (master) master.gain.value = 0.30; return muted; },
     get muted() { return muted; },
   };
 })();
@@ -991,7 +1071,7 @@ const Lang = (() => {
     },
     set(next) {
       code = this.list().some(l => l.code === next) ? next : 'en';
-      document.body.dataset.lang = code;          // drives the font swap in CSS
+      document.body.dataset.lang = code;
       document.documentElement.lang = code;
     },
     notes() { return dict().judging_notes || BARE.judging_notes; },
@@ -1072,7 +1152,7 @@ const $ = id => document.getElementById(id);
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 'screen-' + name));
   // Which gradient the page wears is a function of which screen is up — see the
-  // body[data-screen] rules. Cool for playing, pink for "we need something".
+  // body[data-screen] rules. All of them are charcoal; the hue is the hint.
   document.body.dataset.screen = name;
   window.scrollTo(0, 0);
 }
@@ -1361,7 +1441,7 @@ async function startRun() {
   // has chosen the file route. Only a first run should see it.
   if (Camera.granted || Camera.mode === 'file') {
     if (Camera.granted && !Camera.live) await Camera.attach();
-    return brief();
+    return wantsIntro() ? intro() : brief();
   }
   show('primer');
 }
@@ -1370,7 +1450,7 @@ async function requestCamera() {
   $('allow').disabled = true;
   const ok = await Camera.attach();
   $('allow').disabled = false;
-  if (ok) { Chip.sfx.select(); return brief(); }
+  if (ok) { Chip.sfx.select(); return wantsIntro() ? intro() : brief(); }
   // Refused or unavailable. Say so, and offer the route that still works.
   Chip.sfx.thud();
   $('primer-fallback').classList.remove('hide');
@@ -1413,6 +1493,103 @@ function renderArt(host, st) {
   const bubble = speakable(st.ask);
   bubble.className = 'bubble';
   host.appendChild(bubble);
+}
+
+/* =========================================================================
+   INTRO
+
+   Two stills before the first cell, each with one line, read aloud like
+   everything else he says. The lines stay English in every language for the
+   same reason the asks do: an English voice is reading them.
+
+   It plays once a visit. A player who has just been caught and pressed GO
+   AGAIN does not need telling again why he wants out — so ?intro=1 forces it
+   back for testing, ?intro=0 kills it, and a ?stage=N jump skips it, that
+   being a debugging entrance rather than the front door.
+   ========================================================================= */
+const INTRO_BEATS = ['intro_1', 'intro_2'];
+let introStep = 0;
+let introSeen = false;
+
+function wantsIntro() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('intro') === '1') return true;
+  if (q.get('intro') === '0' || devStage()) return false;
+  return !introSeen;
+}
+
+function paintIntro() {
+  const host = $('intro-art');
+  host.innerHTML = '';
+  // Same contract as the stage art: the server names the file only when it is
+  // really on disk, so a missing still is a holding frame and never a 404.
+  const src = (S && S.intro) ? S.intro[introStep] : null;
+  const label = { scene: 'Intro ' + (introStep + 1) };
+  if (!src) {
+    host.appendChild(placeholderArt(label));
+  } else {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = src;
+    img.addEventListener('error', () => img.replaceWith(placeholderArt(label)));
+    host.appendChild(img);
+  }
+
+  const line = Lang.t(INTRO_BEATS[introStep]);
+  const bubble = speakable(line);
+  bubble.className = 'bubble';
+  host.appendChild(bubble);
+
+  const beats = $('intro-beats');
+  beats.innerHTML = '';
+  INTRO_BEATS.forEach((_, i) => {
+    const pip = document.createElement('span');
+    pip.className = 'beat-pip' + (i <= introStep ? ' on' : '');
+    beats.appendChild(pip);
+  });
+
+  const last = introStep === INTRO_BEATS.length - 1;
+  $('intro-go').textContent = Lang.t(last ? 'intro_go' : 'intro_next');
+  Speech.say(line);
+  Analytics.capture('intro_beat', { beat: introStep + 1 });
+}
+
+function intro() {
+  introStep = 0;
+  Chip.startIntro();
+  paintIntro();
+  show('intro');
+}
+
+/**
+ * However the intro ends, the bed has to go with it. stopIntro() only cancels
+ * the next loop; hush() is what silences the four bars already scheduled, which
+ * would otherwise play on over the first cell.
+ */
+function endIntro() {
+  introSeen = true;
+  Chip.stopIntro();
+  Chip.hush();
+  Speech.stop();
+}
+
+function introNext() {
+  if (introStep < INTRO_BEATS.length - 1) {
+    introStep++;
+    Chip.sfx.select();
+    Chip.introLift();   // the mood turn, over the same loop
+    return paintIntro();
+  }
+  endIntro();
+  Chip.sfx.confirm();
+  brief();
+}
+
+function introSkip() {
+  Analytics.capture('intro_skipped', { beat: introStep + 1 });
+  endIntro();
+  Chip.sfx.select();
+  brief();
 }
 
 function brief() {
@@ -1680,7 +1857,7 @@ function ending(out) {
 
   $('end-verdict').textContent = Lang.t(won ? 'escaped_title' : 'caught_title');
   $('end-verdict').className = 'verdict ' + (won ? 'win' : 'lose');
-  // Gold for getting out, cold slate for getting caught.
+  // A warm charcoal for getting out, a cold one for getting caught.
   document.body.dataset.outcome = won ? 'win' : 'lose';
 
   // The punk's last line, the narrator's line and the stat are three different
@@ -1751,8 +1928,12 @@ $('cam-retry').addEventListener('click', () => {
 $('pick-instead').addEventListener('click', () => {
   Camera.mode = 'file';
   Analytics.capture('camera_fallback_used', {});
+  if (wantsIntro()) return intro();
   brief();
 });
+
+$('intro-go').addEventListener('click', introNext);
+$('intro-skip').addEventListener('click', introSkip);
 
 $('brief-go').addEventListener('click', openCamera);
 $('shoot').addEventListener('click', shoot);
@@ -1773,6 +1954,7 @@ document.addEventListener('keydown', e => {
   if (!open) return;
   e.preventDefault();
   if (open.id === 'screen-cam') shoot();
+  else if (open.id === 'screen-intro') introNext();
   else if (open.id === 'screen-brief') openCamera();
   else if (open.id === 'screen-verdict') $('v-go').click();
 });
