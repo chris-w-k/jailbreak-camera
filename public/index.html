@@ -2126,6 +2126,7 @@ $('end-finish').addEventListener('click', () => {
     toast(Lang.t('finish_wait'));
   }, 4000);
 });
+$('err-again').addEventListener('click', () => { Speech.stop(); show('title'); });
 
 // Space is the shutter, and only that — nothing else on this screen wants it.
 document.addEventListener('keydown', e => {
