@@ -1032,6 +1032,11 @@ const Speech = (() => {
   let voicePoll = null;
   let primed = false;
   let clip = null;   // the <audio> element for a server-voiced or pre-baked line, if one is playing
+  let unlockedAudio = null;   // the one <audio> element proven playable inside a real tap — see unlockAudio()
+  // One silent 8-bit PCM frame, valid and decodable rather than an empty src,
+  // because an <audio> that has never actually played anything doesn't count
+  // as "unlocked" on iOS/WKWebView.
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRiUAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQEAAACA';
   /**
    * 'unknown' until we have watched one utterance actually try to start.
    *
@@ -1091,13 +1096,40 @@ const Speech = (() => {
   }
 
   /**
+   * iOS/WKWebView will only let an <audio> element play() when the call is
+   * still inside a real tap's call stack — and every line in this game is
+   * spoken from an async callback (the ask after startRun()/openCamera()
+   * resolves, the reason after judge/timeout comes back), which is always
+   * well outside that window. The standard mitigation, used by every game
+   * that plays sound on iOS Safari: play a real, silent, decodable clip once
+   * from inside a genuine gesture, and reuse that SAME element for every
+   * later programmatic play() — a brand-new Audio() built later doesn't
+   * inherit the unlock on some WebKit builds, but a previously-played
+   * element does. An empty/no-src <audio> does not count as "played", which
+   * is why this is a one-frame WAV rather than nothing.
+   */
+  function unlockAudio() {
+    if (unlockedAudio) return;
+    try {
+      const a = new Audio(SILENT_WAV);
+      a.volume = 0;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => { /* still counts as the attempt; nothing lost */ });
+      unlockedAudio = a;
+    } catch { /* nothing lost by trying */ }
+  }
+
+  /**
    * Some engines will only ever speak if the very first utterance was started
    * from inside a real user gesture. Run on the first tap anywhere: it costs one
-   * silent utterance and makes every later line work.
+   * silent utterance (plus one silent audio clip, for real recorded lines) and
+   * makes every later line work.
    */
   function prime() {
-    if (primed || !window.speechSynthesis) return;
+    if (primed) return;
     primed = true;
+    unlockAudio();
+    if (!window.speechSynthesis) return;
     try {
       const u = new SpeechSynthesisUtterance(' ');
       u.volume = 0;
@@ -1173,10 +1205,21 @@ const Speech = (() => {
         if (Chip.muted || !text) return;
         const src = clipSrc(voiceClip);
         if (src) {
-          if (clip) { try { clip.pause(); } catch { /* already gone */ } }
-          clip = new Audio(src);
-          clip.addEventListener('error', () => this.sayBrowser(text));
-          clip.play().catch(() => this.sayBrowser(text));
+          // Reuse the element unlockAudio() already got a real play() out of,
+          // rather than a fresh Audio() — see unlockAudio() for why. Falls
+          // back to a plain new one if prime() never ran (shouldn't happen;
+          // the game wires it to the very first click anywhere).
+          if (clip && clip !== unlockedAudio) { try { clip.pause(); } catch { /* already gone */ } }
+          clip = unlockedAudio || new Audio();
+          clip.onerror = () => { console.warn('[speech] clip errored, falling back:', clip.error && clip.error.message); this.sayBrowser(text); };
+          clip.src = src;
+          clip.currentTime = 0;
+          const p = clip.play();
+          if (p && p.catch) p.catch(e => {
+            console.warn('[speech] clip.play() blocked, falling back:', e && e.message);
+            Analytics.capture('voice_clip_blocked', { in_webview: Bridge.inApp, reason: (e && e.name) || 'unknown' });
+            this.sayBrowser(text);
+          });
           return;
         }
         this.sayBrowser(text);
@@ -1185,7 +1228,7 @@ const Speech = (() => {
       }
     },
     stop() {
-      try { if (clip) { clip.pause(); clip = null; } } catch { /* nothing to stop */ }
+      try { if (clip) clip.pause(); } catch { /* nothing to stop */ }
       try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch { /* nothing to stop */ }
     },
   };
