@@ -44,6 +44,9 @@ window.I18N = {
       // Shown when the device will not put the camera feed inside the page, so
       // the shot is taken in the phone's own camera instead.
       cam_native: 'This phone opens the camera full screen — snap it there and you’re straight back.',
+      // Named in the reader's own language on purpose: a child who needs this
+      // button is the one least able to read an English label for it.
+      translate: 'SHOW MY LANGUAGE',
 
       hud_stage: 'STAGE {n}/{total}',
       // The punk's own words, so English in every language — same rule as the
@@ -111,6 +114,7 @@ window.I18N = {
       cam_pick: 'ELEGIR UNA FOTO',
       cam_retry: 'PROBAR LA CÁMARA OTRA VEZ',
       cam_native: 'Este móvil abre la cámara a pantalla completa: haz la foto ahí y volverás enseguida.',
+      translate: 'VER EN ESPAÑOL',
 
       hud_stage: 'FASE {n}/{total}',
       intro_next: 'SIGUIENTE',
@@ -173,6 +177,7 @@ window.I18N = {
       cam_pick: 'ESCOLHER UMA FOTO',
       cam_retry: 'TENTAR A CÂMERA DE NOVO',
       cam_native: 'Este celular abre a câmera em tela cheia: tire a foto ali e você volta na hora.',
+      translate: 'VER EM PORTUGUÊS',
 
       hud_stage: 'FASE {n}/{total}',
       intro_next: 'SEGUINTE',
@@ -235,6 +240,7 @@ window.I18N = {
       cam_pick: 'FOTOĞRAF SEÇ',
       cam_retry: 'KAMERAYI TEKRAR DENE',
       cam_native: 'Bu telefon kamerayı tam ekran açar: fotoğrafı orada çek, hemen geri dönersin.',
+      translate: 'TÜRKÇE GÖSTER',
 
       hud_stage: 'BÖLÜM {n}/{total}',
       intro_next: 'SONRAKİ',
