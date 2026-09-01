@@ -221,6 +221,9 @@
     content:''; position:absolute; left:28px; bottom:-11px;
     border:7px solid transparent; border-top-color:#fff;
   }
+  /* Set when we have proved there is no speech engine and no app to ask. A
+     tap-to-hear icon that cannot do anything is worse than no icon. */
+  body.no-speech .say{display:none;}
   [data-say]{cursor:pointer;}
   [data-say]:active{transform:translateY(2px);}
   .say{opacity:.4; font-size:.8em; margin-left:7px; transition:opacity .12s;}
@@ -1001,6 +1004,19 @@ const Chip = (() => {
    ========================================================================= */
 const Speech = (() => {
   let voice = null;
+  let voicePoll = null;
+  let primed = false;
+  /**
+   * 'unknown' until we have watched one utterance actually try to start.
+   *
+   * Android System WebView is the reason this exists. It exposes
+   * window.speechSynthesis and accepts speak() without complaint, but there is
+   * no TTS engine wired up behind it: nothing is spoken, no error fires, and
+   * getVoices() stays empty for ever. There is no capability flag that tells
+   * you this, so the only honest test is to try once and watch what happens —
+   * and when nothing does, hand the line to the app, which does have a voice.
+   */
+  let state = 'unknown';   // 'unknown' | 'working' | 'dead'
 
   function pick() {
     if (!window.speechSynthesis) return null;
@@ -1018,15 +1034,52 @@ const Speech = (() => {
 
   function init() {
     try {
-      if (!window.speechSynthesis) return;
+      if (!window.speechSynthesis) { state = 'dead'; return; }
       voice = pick();
-      // Chrome populates the list asynchronously, so retry when it tells us.
-      if (!voice) speechSynthesis.addEventListener('voiceschanged', () => { voice = pick(); }, { once: true });
-    } catch { /* no voice is a shame, not a failure */ }
+      if (voice) return;
+      // Chrome populates the list asynchronously and says so. Other engines
+      // populate it late and never fire the event, so poll for a few seconds
+      // as well rather than trusting one listener to arrive.
+      speechSynthesis.addEventListener('voiceschanged', () => { voice = voice || pick(); }, { once: true });
+      let tries = 0;
+      clearInterval(voicePoll);
+      voicePoll = setInterval(() => {
+        voice = voice || pick();
+        if (voice || ++tries > 20) clearInterval(voicePoll);
+      }, 250);
+    } catch { state = 'dead'; }
+  }
+
+  /**
+   * Some engines will only ever speak if the very first utterance was started
+   * from inside a real user gesture. Run on the first tap anywhere: it costs one
+   * silent utterance and makes every later line work.
+   */
+  function prime() {
+    if (primed || !window.speechSynthesis) return;
+    primed = true;
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      speechSynthesis.speak(u);
+    } catch { /* nothing lost by trying */ }
+  }
+
+  /** No engine behind the API. Stop pretending, and ask the app instead. */
+  function giveUp(text) {
+    if (state === 'dead') return;
+    state = 'dead';
+    console.warn('[speech] nothing behind speechSynthesis — handing lines to the app');
+    Analytics.capture('speech_unavailable', { in_webview: Bridge.inApp });
+    // Outside the app there is nobody else to ask, so stop advertising a
+    // tap-to-hear affordance that cannot do anything.
+    if (!Bridge.inApp) document.body.classList.add('no-speech');
+    Bridge.speak(text);
   }
 
   return {
-    init,
+    init, prime,
+    get state() { return state; },
     /**
      * Never allowed to throw. say() is called synchronously from the middle of
      * a stage, so an unhappy speech engine — a rejected voice object, a platform
@@ -1035,18 +1088,37 @@ const Speech = (() => {
      */
     say(text) {
       try {
-        if (!window.speechSynthesis || Chip.muted || !text) return;
+        if (Chip.muted || !text) return;
+        if (!window.speechSynthesis || state === 'dead') return void Bridge.speak(text);
         if (!voice) voice = pick();
-        speechSynthesis.cancel();   // one line at a time; never build a queue
-        const u = new SpeechSynthesisUtterance(String(text));
-        u.lang = 'en-GB';
-        if (voice) {
-          try { u.voice = voice; if (/^en/i.test(voice.lang || '')) u.lang = voice.lang; }
-          catch { /* engine refused the voice; the default one still speaks */ }
+
+        const fire = () => {
+          const u = new SpeechSynthesisUtterance(String(text));
+          u.lang = 'en-GB';
+          if (voice) {
+            try { u.voice = voice; if (/^en/i.test(voice.lang || '')) u.lang = voice.lang; }
+            catch { /* engine refused the voice; the default one still speaks */ }
+          }
+          u.pitch = 0.6;              // dropped well below natural — reads as machine
+          u.rate = 0.95;
+          let started = false;
+          u.onstart = () => { started = true; state = 'working'; };
+          u.onerror = () => { if (!started) giveUp(text); };
+          // If nothing has begun in a second and a half, nothing is going to.
+          setTimeout(() => { if (!started && state !== 'working') giveUp(text); }, 1500);
+          speechSynthesis.speak(u);
+        };
+
+        // cancel() followed immediately by speak() silently drops the new
+        // utterance on several Android builds, which is a very good way to end
+        // up with a game that never says anything. Only cancel when something
+        // is actually in the air, and give the queue a beat to clear.
+        if (speechSynthesis.speaking || speechSynthesis.pending) {
+          speechSynthesis.cancel();
+          setTimeout(fire, 120);
+        } else {
+          fire();
         }
-        u.pitch = 0.6;              // dropped well below natural — reads as machine
-        u.rate = 0.95;
-        speechSynthesis.speak(u);
       } catch (e) {
         console.warn('speech unavailable:', e && e.message);
       }
@@ -1070,6 +1142,7 @@ const Lang = (() => {
     cam_privacy: 'Photos are looked at once, then thrown away.',
     cam_allow: 'TURN ON THE CAMERA', cam_denied: 'No camera, no problem.',
     cam_pick: 'CHOOSE A PHOTO', cam_retry: 'TRY THE CAMERA AGAIN',
+    cam_native: 'This phone opens the camera full screen — snap it there and you’re straight back.',
     hud_stage: 'STAGE {n}/{total}', brief_go: 'OPEN CAMERA', cam_shoot: 'SHOOT IT',
     cam_switch: 'PICK A PHOTO INSTEAD', cam_hint: 'HOLD IT UP AND FILL THE FRAME',
     judging: 'DEVELOPING', judging_notes: ['HE’S HAVING A LOOK...'],
@@ -1233,6 +1306,11 @@ document.addEventListener('click', e => {
   Speech.say((line || host).textContent);
 });
 
+// The first tap anywhere, whatever it was for. Several speech engines will only
+// ever speak if the first utterance was started inside a real user gesture, and
+// by the time the punk has something to say we are no longer in one.
+document.addEventListener('click', () => Speech.prime(), { once: true, capture: true });
+
 /* =========================================================================
    CAMERA
 
@@ -1252,11 +1330,63 @@ const Camera = (() => {
   // recording indicator goes out, but the permission itself doesn't come back —
   // so a replay should never make the player agree to the camera twice.
   let granted = false;
+  /**
+   * Set once we have seen this device refuse to show the feed inside the page.
+   *
+   * iOS WKWebView does exactly that unless the host app passes
+   * allowsInlineMediaPlayback: the <video> will not start inline however much
+   * playsinline the page sets, iOS paints its own play button over it, and
+   * tapping that throws the feed into the native fullscreen player — so the
+   * player has to swipe back out to reach the shutter, with the shot clock
+   * running the whole time. That is the NJA-2872 iOS report, and the same page
+   * in mobile Safari on the same phone is fine, because Safari allows inline.
+   *
+   * The real fix is one prop on the app's WebView. Until then, once we have
+   * seen it we stop asking for a feed and use the native capture sheet, which
+   * works everywhere and needs nothing from the app.
+   */
+  let inlineBlocked = false;
 
+  /**
+   * webkitbeginfullscreen only fires on iOS, and only when iOS has taken the
+   * video fullscreen — which is proof of exactly the condition above, so it is
+   * both a detector and a last line of defence if the check below is passed.
+   */
+  function watchFullscreen(video) {
+    if (!video || video.dataset.fsWatched) return;
+    video.dataset.fsWatched = '1';
+    video.addEventListener('webkitbeginfullscreen', () => {
+      inlineBlocked = true;
+      try { if (video.webkitExitFullscreen) video.webkitExitFullscreen(); } catch { /* let it be */ }
+      onInlineBlocked();
+    });
+    // If it does go fullscreen anyway, at least stop charging the player for
+    // the time they spend in there — visibilitychange does not fire for this.
+    video.addEventListener('webkitendfullscreen', () => { Clock.resume(); });
+  }
+
+  /**
+   * Wait for real decoded frames. A stream we hold but cannot display is worse
+   * than no stream at all, because the game looks broken rather than limited.
+   * Generous, because a cold camera on a slow phone can take a second or two.
+   */
+  function hasFeed(video, ms) {
+    return new Promise(resolve => {
+      const t0 = Date.now();
+      (function look() {
+        if (video.videoWidth > 0 && video.readyState >= 2 && !video.paused) return resolve(true);
+        if (Date.now() - t0 > ms) return resolve(false);
+        setTimeout(look, 100);
+      })();
+    });
+  }
+
+  /** @returns {Promise<'live'|'nofeed'|'denied'>} */
   async function attach() {
-    if (mode === 'file') return false;
+    if (mode === 'file' || inlineBlocked) return 'nofeed';
     const video = $('video');
-    if (stream && stream.active && video.srcObject === stream) return true;
+    watchFullscreen(video);
+    if (stream && stream.active && video.srcObject === stream && video.videoWidth > 0 && !video.paused) return 'live';
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no getUserMedia');
       stream = await navigator.mediaDevices.getUserMedia({
@@ -1266,16 +1396,24 @@ const Camera = (() => {
         audio: false,
       });
       video.srcObject = stream;
-      // Some browsers need the play() even with autoplay set, and reject it
-      // outside a gesture — which is exactly why this runs off a button.
-      try { await video.play(); } catch { /* autoplay policy; the stream is still live */ }
       granted = true;
-      return true;
+      // Some browsers need the play() even with autoplay set. A rejection here
+      // is the signature of a webview that will not play inline, so it shortens
+      // how long we are willing to wait before giving up on the feed.
+      let refused = false;
+      try { await video.play(); } catch (e) { refused = true; }
+      if (!(await hasFeed(video, refused ? 600 : 3000))) {
+        console.warn('camera stream will not play inline on this device — using native capture');
+        inlineBlocked = true;
+        stop();
+        return 'nofeed';
+      }
+      return 'live';
     } catch (e) {
       console.warn('camera unavailable:', e && e.message);
       Analytics.capture('camera_denied', { reason: (e && e.name) || 'unknown' });
       stream = null;
-      return false;
+      return 'denied';
     }
   }
 
@@ -1308,6 +1446,7 @@ const Camera = (() => {
     set mode(m) { mode = m; },
     get live() { return !!(stream && stream.active); },
     get granted() { return granted; },
+    get inlineBlocked() { return inlineBlocked; },
     attach, stop,
     /** Grab the current viewfinder frame. */
     capture() {
@@ -1356,7 +1495,8 @@ const Camera = (() => {
 const Bridge = (() => {
   const START = 'NovaPals.Prototype.Start';
   const END = 'NovaPals.Prototype.End';
-  let startSends = 0, endSends = 0;
+  const SPEAK = 'NovaPals.Prototype.Speak';
+  let startSends = 0, endSends = 0, speakSends = 0;
 
   /** react-native-webview injects this into the page before our scripts run. */
   function host() {
@@ -1412,6 +1552,34 @@ const Bridge = (() => {
       send(END);
       return endSends;
     },
+
+    /**
+     * "Please say this out loud." Entirely optional: an app that does not
+     * implement it drops the message and nothing changes. It exists because
+     * Android System WebView has no TTS engine behind speechSynthesis, so on
+     * that platform the app is the only thing that can give the punk a voice.
+     *
+     * JSON only — there is a payload to carry, which a bare event name cannot
+     * do — and rate-limited by the caller, which speaks one line at a time.
+     */
+    speak(text) {
+      const rn = host();
+      if (!rn || !text) return false;
+      speakSends++;
+      try {
+        rn.postMessage(JSON.stringify({
+          type: SPEAK, event: SPEAK, name: SPEAK,
+          text: String(text).slice(0, 400),
+          lang: 'en-GB',
+          source: 'jailbreak-camera',
+        }));
+        return true;
+      } catch (e) {
+        console.warn('[NovaPals] speak failed:', e && e.message);
+        return false;
+      }
+    },
+    get speakSends() { return speakSends; },
   };
 })();
 
@@ -1603,13 +1771,41 @@ async function startRun() {
 
 async function requestCamera() {
   $('allow').disabled = true;
-  const ok = await Camera.attach();
+  const how = await Camera.attach();
   $('allow').disabled = false;
-  if (ok) { Chip.sfx.select(); return wantsIntro() ? intro() : brief(); }
-  // Refused or unavailable. Say so, and offer the route that still works.
+  if (how === 'live') { Chip.sfx.select(); return wantsIntro() ? intro() : brief(); }
+  // 'nofeed' is not a refusal — permission was given, this device just will not
+  // show the feed in the page. Offering "try the camera again" would be a lie,
+  // so go straight into the game and use the native capture sheet per shot.
+  if (how === 'nofeed') {
+    Camera.mode = 'file';
+    Analytics.capture('camera_native_only', { at: 'primer' });
+    Chip.sfx.select();
+    return wantsIntro() ? intro() : brief();
+  }
+  // Genuinely refused or unavailable. Say so, and offer the route that works.
   Chip.sfx.thud();
   $('primer-fallback').classList.remove('hide');
   $('allow').classList.add('hide');
+}
+
+/**
+ * The feed has been taken away from us — either it never played inline, or iOS
+ * has just thrown it into its own fullscreen player mid-shot. Either way the
+ * player did nothing wrong, so the clock comes off them, and they get handed the
+ * capture route that does work on this device.
+ */
+function onInlineBlocked() {
+  Camera.mode = 'file';
+  Clock.stop();
+  Camera.stop();
+  const open = document.querySelector('.screen.on');
+  const midShot = !!(open && open.id === 'screen-cam');
+  Analytics.capture('camera_native_only', { at: midShot ? 'mid_shot' : 'attach' });
+  if (!midShot) return;
+  toast(Lang.t('cam_native'));
+  // A beat, so the toast is read before the OS sheet covers everything.
+  setTimeout(() => { if (document.querySelector('.screen.on') === open) $('file').click(); }, 900);
 }
 
 /* ---- stage brief ---- */
@@ -1760,11 +1956,12 @@ function brief() {
 async function openCamera() {
   Chip.sfx.select();
   if (Camera.mode === 'file') return $('file').click();
-  const ok = await Camera.attach();
-  if (!ok) {
+  const how = await Camera.attach();
+  if (how !== 'live') {
+    const native = how === 'nofeed';
     Camera.mode = 'file';
-    Analytics.capture('camera_fallback_used', {});
-    toast(Lang.t('cam_denied'));
+    Analytics.capture(native ? 'camera_native_only' : 'camera_fallback_used', { at: 'open' });
+    toast(Lang.t(native ? 'cam_native' : 'cam_denied'));
     return $('file').click();
   }
   paintHud('cam');
