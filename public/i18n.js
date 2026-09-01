@@ -25,10 +25,7 @@ window.I18N = {
   strings: {
     en: {
       say_hint: 'TAP TO HEAR IT',
-      lang_prompt: 'LANGUAGE',
-      title_tag: 'HE CAN’T REACH ANYTHING. YOU CAN.',
-      title_start: 'BREAK HIM OUT',
-      title_foot: 'FIND IT · SHOOT IT · GET OUT',
+      lang_prompt: 'WANT HINTS IN YOUR LANGUAGE?',
 
       gate_title: 'RESTRICTED AREA',
       gate_hint: 'ACCESS CODE',
@@ -97,10 +94,7 @@ window.I18N = {
 
     es: {
       say_hint: 'TOCA PARA OÍRLO',
-      lang_prompt: 'IDIOMA',
-      title_tag: 'ÉL NO ALCANZA NADA. TÚ SÍ.',
-      title_start: 'SÁCALO DE AHÍ',
-      title_foot: 'BÚSCALO · FOTOGRÁFIALO · SAL',
+      lang_prompt: '¿QUIERES PISTAS EN TU IDIOMA?',
 
       gate_title: 'ZONA RESTRINGIDA',
       gate_hint: 'CÓDIGO DE ACCESO',
@@ -160,10 +154,7 @@ window.I18N = {
 
     pt: {
       say_hint: 'TOQUE PARA OUVIR',
-      lang_prompt: 'IDIOMA',
-      title_tag: 'ELE NÃO ALCANÇA NADA. VOCÊ ALCANÇA.',
-      title_start: 'TIRE ELE DE LÁ',
-      title_foot: 'ACHE · FOTOGRAFE · FUJA',
+      lang_prompt: 'QUER DICAS NO SEU IDIOMA?',
 
       gate_title: 'ÁREA RESTRITA',
       gate_hint: 'CÓDIGO DE ACESSO',
@@ -223,10 +214,7 @@ window.I18N = {
 
     tr: {
       say_hint: 'DİNLEMEK İÇİN DOKUN',
-      lang_prompt: 'DİL',
-      title_tag: 'O HİÇBİR ŞEYE UZANAMIYOR. SEN UZANABİLİRSİN.',
-      title_start: 'ONU KAÇIR',
-      title_foot: 'BUL · ÇEK · KAÇ',
+      lang_prompt: 'KENDİ DİLİNDE İPUCU İSTER MİSİN?',
 
       gate_title: 'YASAK BÖLGE',
       gate_hint: 'ERİŞİM KODU',

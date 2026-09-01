@@ -101,9 +101,9 @@
   @keyframes rise{from{opacity:0; transform:translateY(10px)}to{opacity:1; transform:none}}
 
   /* ---------- type ---------- */
-  .logo,.btn,.shutter,.hud,.load-title,.verdict,.prompt,.got,.clock .num,
-  .loot h4,.err h3,.stage-ph .ph-name,.shot .stamp,.lang-label,.free,
-  .cam-hint,.loot-hint,.foot,.code-input{
+  .btn,.shutter,.hud,.load-title,.verdict,.prompt,.got,.clock .num,
+  .loot h4,.err h3,.stage-ph .ph-name,.shot .stamp,.free,
+  .cam-hint,.loot-hint,.code-input{
     font-family:var(--display); font-weight:400; text-transform:uppercase;
     letter-spacing:.5px;
   }
@@ -145,30 +145,15 @@
   .btn.ghost:hover:not(:disabled){color:var(--ink); filter:none; background:#343434;}
   .btn.ghost:active:not(:disabled){box-shadow:0 1px 0 0 var(--edge);}
 
-  /* ---------- title ---------- */
-  #screen-title{text-align:center; padding:10px 0;}
-  .logo{margin:22px 0 4px; line-height:1;}
-  /* Shadows here are filters, not text-shadows: a text-shadow is drawn from the
-     glyph outline and ignores -webkit-text-stroke, so it ghosts a second
-     un-stroked word underneath. A filter shadows what was actually painted. */
-  .logo .l1{
-    display:block; font-size:26px; color:var(--purple-lt);
-    filter:drop-shadow(0 3px 0 var(--edge));
-  }
-  .logo .l2{
-    display:block; font-size:62px; margin-top:6px; color:#fff;
-    -webkit-text-stroke:5px var(--edge); paint-order:stroke fill;
-    filter:drop-shadow(0 7px 0 var(--purple-dk));
-    animation:bob 2.4s ease-in-out infinite;
-  }
-  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-  .bars{
-    height:10px; margin:22px auto; width:86px;
-    background:radial-gradient(circle,var(--purple) 4px,transparent 4.5px) 0 0/29px 10px;
-  }
+  /* ---------- title ----------
+     No logo, no tagline: this only ever gets a tap-through from the NovaPals
+     webview, so the "title screen" is just the language question — reusing
+     .tag's readable body-font styling rather than the blocky display font,
+     since it's a sentence to read rather than a piece of chrome. */
+  #screen-title{text-align:center; padding:56px 0;}
   .tag{
-    font-size:15px; line-height:1.5; color:var(--dim);
-    margin-bottom:24px; padding:0 10px;
+    font-size:19px; line-height:1.5; color:var(--ink); font-weight:800;
+    margin-bottom:22px; padding:0 10px;
   }
   .blink{animation:blink 1s steps(1) infinite;}
   @keyframes blink{50%{opacity:.25}}
@@ -413,7 +398,6 @@
   }
 
   /* ---------- language picker ---------- */
-  .lang-label{font-size:13px; color:var(--dim); margin-top:26px;}
   .langs{display:flex; gap:7px; justify-content:center; margin-top:11px; flex-wrap:wrap;}
   .lang-chip{
     font-family:var(--body); font-weight:800; font-size:13px;
@@ -454,7 +438,6 @@
     display:flex; align-items:center; justify-content:center;
   }
   .mute:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
-  .foot{text-align:center; font-size:12px; color:#7A7A7A; margin-top:22px;}
 
   /* Something went wrong but the run is fine — says so and gets out of the way. */
   .toast{
@@ -494,18 +477,14 @@
     </div>
   </section>
 
-  <!-- ================= TITLE ================= -->
+  <!-- ================= TITLE =================
+       No logo, no tagline, no separate start button: this only ever gets a
+       tap-through from the NovaPals webview, so there's nothing to sell. The
+       only decision left is which language to see hints in, and tapping a
+       chip both sets it and starts the run in one action. -->
   <section id="screen-title" class="screen on">
-    <div class="logo">
-      <div class="l1">JAILBREAK</div>
-      <div class="l2">CAMERA</div>
-    </div>
-    <div class="bars"></div>
-    <div class="tag" data-t="title_tag">HE CAN’T REACH ANYTHING. YOU CAN.</div>
-    <button class="btn big" id="start" data-t="title_start">BREAK HIM OUT</button>
-    <div class="lang-label" data-t="lang_prompt">LANGUAGE</div>
+    <div class="tag" data-t="lang_prompt">WANT HINTS IN YOUR LANGUAGE?</div>
     <div class="langs" id="langs"></div>
-    <div class="foot" data-t="title_foot">FIND IT · SHOOT IT · GET OUT</div>
   </section>
 
   <!-- ================= CAMERA PRIMER =================
@@ -1180,8 +1159,7 @@ const Speech = (() => {
 const Lang = (() => {
   // Just enough English to stay playable if /i18n.js is blocked or missing.
   const BARE = {
-    lang_prompt: 'LANGUAGE', title_start: 'BREAK HIM OUT',
-    title_tag: 'HE CAN’T REACH ANYTHING. YOU CAN.', title_foot: 'FIND IT · SHOOT IT · GET OUT',
+    lang_prompt: 'WANT HINTS IN YOUR LANGUAGE?',
     gate_title: 'RESTRICTED AREA', gate_hint: 'ACCESS CODE', gate_go: 'UNLOCK',
     cam_title: 'CAMERA CHECK',
     cam_why: 'This game is played with the camera on the back of your phone.',
@@ -1356,11 +1334,16 @@ function buildLangs() {
     const b = document.createElement('button');
     b.className = 'lang-chip' + (l.code === Lang.code ? ' on' : '');
     b.textContent = l.label;
+    // There's no separate start button any more: picking a hint language IS
+    // starting the run. titleArmed guards against a tap landing before
+    // /api/health has told us whether this session is gated.
     b.addEventListener('click', () => {
+      if (!titleArmed) return;
+      titleArmed = false;   // one shot — ignore a second tap while we leave
       Chip.sfx.blip();
       Lang.set(l.code);
-      buildLangs();
       applyText(document);
+      startRun();
     });
     host.appendChild(b);
   });
@@ -1861,6 +1844,8 @@ let judged = null;       // the stage the in-flight photo belongs to
 let judgedAttempt = 0;   // which of its three goes this photo is
 let busy = false;        // one photo in the air at a time
 let noteTimer = null;
+let given = null;        // ?lang=, if the app told us which one to use
+let titleArmed = false;  // true once /api/health has resolved and we're not gated
 
 async function api(path, body) {
   const res = await fetch(path, {
@@ -1928,16 +1913,27 @@ function paintHud(stagePrefix) {
   renderTally($(stagePrefix + '-tally'));
 }
 
+/**
+ * The title screen is live: /api/health has resolved, we're not behind a gate,
+ * so a tap on a language chip is allowed to start a run. If the app already
+ * told us the language (?lang=), there's nothing left to tap at all — the
+ * chips are hidden, so this starts the run itself instead of waiting on one.
+ */
+function armTitle() {
+  titleArmed = true;
+  if (given) startRun();
+}
+
 /* ---- boot ---- */
 async function boot() {
   // Paint and announce BEFORE anything slow or fallible. The app's overlay is up
   // until Bridge.ready() lands, and a cold Render free instance can sit on
   // /api/health for half a minute — the child should be looking at the title
-  // screen with a button that is not armed yet, not at a spinner with no end.
+  // screen with chips that aren't armed yet, not at a spinner with no end.
   // The finally is the belt: if any of this throws, the overlay still lifts.
   try {
     Speech.init();
-    const given = urlLang();
+    given = urlLang();
     Lang.set(given || 'en');
     buildLangs();
     applyText(document);
@@ -1948,12 +1944,13 @@ async function boot() {
       $('end-again').className = 'btn ghost gap';
     }
     if (given) {
-      // The app chose the language; the picker would only be a way to break it.
+      // The app chose the language; the picker would only be a way to break
+      // it, and with no button left to tap the run starts on its own once
+      // armTitle() sees `given` after /api/health resolves.
       $('langs').classList.add('hide');
-      document.querySelector('.lang-label').classList.add('hide');
+      document.querySelector('#screen-title .tag').classList.add('hide');
     }
 
-    $('start').disabled = true;   // armed once we know the server is there
     show('title');
   } finally {
     Bridge.ready();
@@ -1968,11 +1965,11 @@ async function boot() {
   Analytics.register({ mock_mode: !!health.mock, in_webview: Bridge.inApp });
   Analytics.capture('page_ready', { in_webview: Bridge.inApp, start_sends: Bridge.startSends });
 
-  $('start').disabled = false;
-  if (health.gated && !health.unlocked) { show('gate'); $('code').focus(); }
+  if (health.gated && !health.unlocked) { show('gate'); $('code').focus(); return; }
   // Title starts already visible in the HTML (class="on"), so it never goes
   // through show() the way every other screen does — fire its $screen by hand.
-  else Analytics.screen('Title');
+  Analytics.screen('Title');
+  armTitle();
 }
 
 async function unlock() {
@@ -1984,6 +1981,7 @@ async function unlock() {
     await api('/api/unlock', { code });
     Chip.boot(); Chip.sfx.confirm();
     show('title');
+    armTitle();
   } catch (e) {
     $('code-err').textContent = e.message;
     Chip.sfx.thud();
@@ -2026,13 +2024,10 @@ async function startRun() {
   // playing. Cut it before the new run's own sounds start.
   Chip.hush();
   Chip.sfx.confirm();
-  $('start').disabled = true;
   try {
     S = await api('/api/start', { lang: Lang.code, startAt: devStage() });
   } catch (e) {
     return fail(e);
-  } finally {
-    $('start').disabled = false;
   }
   Analytics.capture('run_started', { stages: S.totalStages, resumed_at: S.stageNumber });
   // Straight past the primer if this player has already agreed to the camera, or
@@ -2608,7 +2603,6 @@ $('mute').addEventListener('click', () => {
 $('unlock').addEventListener('click', unlock);
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') unlock(); });
 
-$('start').addEventListener('click', startRun);
 $('allow').addEventListener('click', requestCamera);
 $('cam-retry').addEventListener('click', () => {
   $('primer-fallback').classList.add('hide');
@@ -2661,7 +2655,7 @@ $('end-finish').addEventListener('click', () => {
     toast(Lang.t('finish_wait'));
   }, 4000);
 });
-$('err-again').addEventListener('click', () => { Speech.stop(); show('title'); });
+$('err-again').addEventListener('click', () => { Speech.stop(); show('title'); armTitle(); });
 
 // Space is the shutter, and only that — nothing else on this screen wants it.
 document.addEventListener('keydown', e => {

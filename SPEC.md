@@ -128,7 +128,7 @@ worth revisiting with the slice in hand.
 
 ## 7. Screens
 
-1. **Title** — pixel logo, premise in one line, language chips, Start.
+1. **Title** — no branding, since it's only ever reached via a tap-through from the NovaPals webview: just "want hints in your language?" and the four language chips. Tapping one sets the language and starts the run in a single action. If the app already passed `?lang=`, the chips never appear at all and the run starts on its own.
 2. **Gate** — `ACCESS_CODE` entry when one is set (reuses jailbreak's `RESTRICTED AREA` screen).
 3. **Permission primer** — *why* the camera is needed and that nothing is stored,
    then a button that fires the real browser prompt. Never call `getUserMedia` cold;
