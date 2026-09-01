@@ -221,6 +221,41 @@
     content:''; position:absolute; left:28px; bottom:-11px;
     border:7px solid transparent; border-top-color:#fff;
   }
+  /* ---------- vocabulary support ----------
+     The two words each stage teaches are bold so they get noticed, and tappable
+     so the meaning costs one deliberate action rather than none. The gloss lands
+     BESIDE the English, never instead of it — the mapping between the two is the
+     thing being learned, and a learner who only ever sees their own language has
+     been given comprehension instead of vocabulary. */
+  .key{
+    font-weight:800; color:#5B21B6; cursor:pointer;
+    border-bottom:2px dotted rgba(91,33,182,.45);
+  }
+  .key.open{border-bottom-color:transparent;}
+  .key .gloss{font-weight:700; color:#6B4FA8; font-style:italic;}
+  /* The whole line, one more tap away and one step quieter. Deliberately not a
+     big button: at this level the English should be the path of least
+     resistance, with this here for when it genuinely is not enough. */
+  .assist{
+    display:flex; gap:10px; justify-content:center; align-items:center;
+    margin-top:12px; flex-wrap:wrap;
+  }
+  .assist button{
+    font-family:var(--body); font-weight:800; font-size:12px;
+    letter-spacing:.4px; text-transform:uppercase;
+    background:none; border:0; color:var(--dim); cursor:pointer;
+    padding:7px 10px; border-radius:9px; border:1px solid var(--line);
+  }
+  .assist button:active{transform:translateY(2px);}
+  .assist button.on{color:var(--purple-lt); border-color:var(--purple-dk);}
+  /* Sits under the English inside the bubble, smaller and dimmer, so the eye
+     still lands on the English first. */
+  .local{
+    display:block; margin-top:9px; padding-top:9px;
+    border-top:1px dashed rgba(22,34,74,.22);
+    font-size:14px; font-weight:700; color:#4A4A6A; font-style:italic;
+  }
+
   /* Set when we have proved there is no speech engine and no app to ask. A
      tap-to-hear icon that cannot do anything is worse than no icon. */
   body.no-speech .say{display:none;}
@@ -369,6 +404,13 @@
     font-size:11px; color:var(--purple-lt); letter-spacing:.6px;
   }
   .loot-item .what{display:block; margin-top:5px; font-size:15px; line-height:1.35; word-break:break-word;}
+  /* The words the stage was teaching, under the object that satisfied them. */
+  .loot-item .learned{
+    display:block; margin-top:7px; padding-top:6px;
+    border-top:1px solid rgba(255,255,255,.07);
+    font-family:var(--display); text-transform:uppercase; letter-spacing:.5px;
+    font-size:12px; color:var(--green);
+  }
 
   /* ---------- language picker ---------- */
   .lang-label{font-size:13px; color:var(--dim); margin-top:26px;}
@@ -506,7 +548,10 @@
     </div>
     <div class="stage" id="brief-art"></div>
     <div class="below">
-      <button class="btn big" id="brief-go" data-t="brief_go">OPEN CAMERA</button>
+      <!-- The whole line in the child's own language, one tap away. Built only
+           when there is a translation for the run's language. -->
+      <div class="assist" id="brief-assist"></div>
+      <button class="btn big gap" id="brief-go" data-t="brief_go">OPEN CAMERA</button>
     </div>
   </section>
 
@@ -528,6 +573,7 @@
     </div>
     <button class="shutter" id="shoot"><span class="lens"></span><span data-t="cam_shoot">SHOOT IT</span></button>
     <div class="cam-hint" data-t="cam_hint">HOLD IT UP AND FILL THE FRAME</div>
+    <div class="assist" id="cam-assist"></div>
     <button class="btn ghost gap" id="use-file" data-t="cam_switch">PICK A PHOTO INSTEAD</button>
   </section>
 
@@ -1143,6 +1189,7 @@ const Lang = (() => {
     cam_allow: 'TURN ON THE CAMERA', cam_denied: 'No camera, no problem.',
     cam_pick: 'CHOOSE A PHOTO', cam_retry: 'TRY THE CAMERA AGAIN',
     cam_native: 'This phone opens the camera full screen — snap it there and you’re straight back.',
+    translate: 'SHOW MY LANGUAGE',
     hud_stage: 'STAGE {n}/{total}', brief_go: 'OPEN CAMERA', cam_shoot: 'SHOOT IT',
     cam_switch: 'PICK A PHOTO INSTEAD', cam_hint: 'HOLD IT UP AND FILL THE FRAME',
     judging: 'DEVELOPING', judging_notes: ['HE’S HAVING A LOOK...'],
@@ -1165,6 +1212,11 @@ const Lang = (() => {
 
   return {
     get code() { return code; },
+    /** How this language calls itself — 'ESPAÑOL'. */
+    get label() {
+      const hit = this.list().find(l => l.code === code);
+      return (hit && hit.label) || code.toUpperCase();
+    },
     get locale() {
       const hit = this.list().find(l => l.code === code);
       return (hit && hit.locale) || code || 'en';
@@ -1284,13 +1336,22 @@ function buildLangs() {
   });
 }
 
-/** A line the punk says out loud, with a tap-to-hear affordance. */
-function speakable(text) {
+/**
+ * A line the punk says out loud, with a tap-to-hear affordance.
+ *
+ * `vocab` bolds the words this stage teaches and makes each one tappable. The
+ * pristine English is stashed on the element, because once a gloss or a
+ * translation is showing, textContent is no longer the English — and the voice
+ * must stay English whatever the screen says. That is the whole point: read it
+ * in your language if you need to, hear it in English regardless.
+ */
+function speakable(text, vocab) {
   const wrap = document.createElement('div');
   wrap.dataset.say = '';
+  wrap.dataset.speak = text;
   const line = document.createElement('span');
   line.className = 'line';
-  line.textContent = text;
+  line.append(...markVocab(text, vocab));
   const icon = document.createElement('span');
   icon.className = 'say';
   icon.textContent = '🔊';
@@ -1299,11 +1360,53 @@ function speakable(text) {
   return wrap;
 }
 
+/**
+ * Split a line into text and <b class="key"> nodes for the target words. Longest
+ * match first, so "light the way" wins over a bare "light" if both were listed,
+ * and every match is verbatim — stages.js guarantees the word appears in the ask.
+ */
+function markVocab(text, vocab) {
+  const words = (vocab || []).filter(v => v && v.word && text.includes(v.word));
+  if (!words.length) return [document.createTextNode(text)];
+  const order = [...words].sort((a, b) => b.word.length - a.word.length);
+  let parts = [text];
+  for (const v of order) {
+    const next = [];
+    for (const part of parts) {
+      if (typeof part !== 'string') { next.push(part); continue; }
+      const bits = part.split(v.word);
+      bits.forEach((bit, i) => {
+        if (bit) next.push(bit);
+        if (i < bits.length - 1) next.push(v);
+      });
+    }
+    parts = next;
+  }
+  return parts.map(part => {
+    if (typeof part === 'string') return document.createTextNode(part);
+    const b = document.createElement('b');
+    b.className = 'key';
+    b.textContent = part.word;
+    b.dataset.word = part.word;
+    if (part.local) {
+      b.dataset.local = part.local;
+      b.title = part.local;
+    }
+    return b;
+  });
+}
+
 document.addEventListener('click', e => {
+  // A tapped keyword is a gloss request, not a read-aloud request.
+  const key = e.target.closest('.key');
+  if (key) {
+    e.stopPropagation();
+    return Assist.toggleWord(key);
+  }
   const host = e.target.closest('[data-say]');
   if (!host) return;
   const line = host.querySelector('.line');
-  Speech.say((line || host).textContent);
+  Speech.say(host.dataset.speak || (line || host).textContent);
 });
 
 // The first tap anywhere, whatever it was for. Several speech engines will only
@@ -1584,6 +1687,142 @@ const Bridge = (() => {
 })();
 
 /* =========================================================================
+   VOCABULARY SUPPORT
+
+   The game is in English on purpose — that is what the child is here to learn —
+   but a full sentence is more than an eleven-year-old at A2 can always take, and
+   a kid who cannot read the ask cannot play. So there are two levels of help,
+   both free, both deliberately requiring a deliberate action:
+
+     tap a bold word    the gloss appears beside it, English still visible
+     tap the language    the whole line appears underneath, smaller and dimmer
+
+   Three rules hold this together, and each of them exists because the obvious
+   version of this feature teaches nothing:
+
+     1. Help is per line, and resets when the stage changes. A toggle that
+        persisted would be flipped once on stage one and the remaining six would
+        be played in Spanish — an English game with English audio and nothing
+        else. Every ask gets met in English first.
+     2. The gloss goes BESIDE the English, never instead of it. Whoever does the
+        work of getting meaning out of the English keeps the word; a learner
+        handed a replacement reads the replacement and skips the form.
+     3. The voice never changes. Audio stays English whatever the screen shows,
+        so the word is always heard in the language being learned.
+
+   And the shot clock stops while help is open, because charging a child fifteen
+   seconds for not understanding yet is precisely backwards.
+   ========================================================================= */
+const Assist = (() => {
+  let stageId = null;      // what the current state belongs to
+  let open = 0;            // how many pieces of help are showing
+  let sentence = false;
+  let peek = null;         // auto-close timer, camera screen only
+
+  /** Anything visible right now is about to be about a different line. */
+  function reset(id) {
+    if (stageId === id) return;
+    stageId = id;
+    closeAll();
+  }
+
+  function onCamera() {
+    const el = document.querySelector('.screen.on');
+    return !!(el && el.id === 'screen-cam');
+  }
+
+  /**
+   * Opening help takes the clock off the player. On the camera screen it is a
+   * peek rather than a mode — it closes itself after a few seconds, which is
+   * long enough to read a short line and short enough that the clock cannot be
+   * parked indefinitely behind an open translation.
+   */
+  function held() {
+    if (!onCamera()) return;
+    Clock.pause();
+    clearTimeout(peek);
+    if (open > 0) peek = setTimeout(closeAll, 6000);
+    else Clock.resume();
+  }
+
+  function closeAll() {
+    document.querySelectorAll('.key.open').forEach(k => showGloss(k, false));
+    document.querySelectorAll('.local').forEach(el => el.remove());
+    document.querySelectorAll('.assist button.on').forEach(b => b.classList.remove('on'));
+    sentence = false;
+    open = 0;
+    clearTimeout(peek);
+    Clock.resume();
+  }
+
+  function showGloss(key, on) {
+    const had = key.classList.contains('open');
+    if (on === had) return;
+    if (on) {
+      const g = document.createElement('span');
+      g.className = 'gloss';
+      g.textContent = ' (' + key.dataset.local + ')';
+      key.appendChild(g);
+      key.classList.add('open');
+    } else {
+      const g = key.querySelector('.gloss');
+      if (g) g.remove();
+      key.classList.remove('open');
+    }
+  }
+
+  return {
+    reset, closeAll,
+    /** Tapping a bold word. Silent no-op in English, where there is no gloss. */
+    toggleWord(key) {
+      if (!key.dataset.local) return;
+      const opening = !key.classList.contains('open');
+      // Every copy of this word on screen — the brief bubble and the camera card
+      // can both be showing the same line.
+      document.querySelectorAll('.key[data-word="' + cssEscape(key.dataset.word) + '"]')
+        .forEach(k => showGloss(k, opening));
+      open += opening ? 1 : -1;
+      if (open < 0) open = 0;
+      Chip.sfx.blip();
+      Analytics.capture(opening ? 'gloss_opened' : 'gloss_closed', {
+        stage: stageId, word: key.dataset.word, on_camera: onCamera(),
+      });
+      held();
+    },
+    /** Tapping the language button: the whole line, under the English. */
+    toggleSentence(hosts, text, label) {
+      sentence = !sentence;
+      Chip.sfx.blip();
+      hosts.forEach(host => {
+        if (!host) return;
+        const existing = host.querySelector('.local');
+        if (existing) existing.remove();
+        if (sentence) {
+          const el = document.createElement('span');
+          el.className = 'local';
+          el.textContent = text;
+          host.appendChild(el);
+        }
+      });
+      document.querySelectorAll('.assist button').forEach(b => b.classList.toggle('on', sentence));
+      open += sentence ? 1 : -1;
+      if (open < 0) open = 0;
+      Analytics.capture(sentence ? 'translation_opened' : 'translation_closed', {
+        stage: stageId, language: Lang.code, on_camera: onCamera(),
+      });
+      held();
+    },
+    get sentenceShown() { return sentence; },
+    get openCount() { return open; },
+  };
+})();
+
+/** CSS.escape is missing on older webviews, and a word could contain a quote. */
+function cssEscape(v) {
+  return window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/["\\]/g, '\\$&');
+}
+
+/* =========================================================================
    GAME
    ========================================================================= */
 let S = null;            // the server's view of the run
@@ -1841,9 +2080,30 @@ function renderArt(host, st) {
     host.appendChild(img);
   }
 
-  const bubble = speakable(st.ask);
+  const bubble = speakable(st.ask, st.vocab);
   bubble.className = 'bubble';
   host.appendChild(bubble);
+}
+
+/**
+ * The quiet control under the brief that offers the whole line. Only built when
+ * there is something to offer: an English run, or a language we have no
+ * translation for, simply doesn't get one.
+ */
+function renderAssist(host, st) {
+  host.innerHTML = '';
+  if (!st || !st.askLocal) return;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = Lang.t('translate');
+  b.addEventListener('click', () => {
+    // Both copies of the line, so the brief and the camera card stay in step.
+    Assist.toggleSentence(
+      [document.querySelector('#brief-art .bubble'), document.querySelector('#screen-cam .ask')],
+      st.askLocal,
+    );
+  });
+  host.appendChild(b);
 }
 
 /* =========================================================================
@@ -1946,7 +2206,10 @@ function introSkip() {
 function brief() {
   if (!S.stage) return ending(null);
   paintHud('brief');
+  // New line, so any help showing for the last one goes.
+  Assist.reset(S.stage.id);
   renderArt($('brief-art'), S.stage);
+  renderAssist($('brief-assist'), S.stage);
   show('brief');
   Speech.say(S.stage.ask);
   Analytics.capture('stage_started', { stage: S.stage.id, stage_number: S.stageNumber });
@@ -1965,13 +2228,24 @@ async function openCamera() {
     return $('file').click();
   }
   paintHud('cam');
+  // The card is about to be rebuilt, so whatever help was open on it is gone
+  // from the DOM — zero the bookkeeping with it, or the clock stays paused
+  // against a gloss nobody can see. A retry also gets to meet the line in
+  // English again, which is the point.
+  Assist.closeAll();
+  // Rebuilt rather than cloned, so the keywords here are live too: the ask card
+  // is the copy the player is actually looking at while hunting for the object.
   const ask = $('cam-ask');
   ask.innerHTML = '';
-  ask.appendChild(speakable(S.stage.ask).firstChild.cloneNode(true));
+  ask.dataset.speak = S.stage.ask;
+  const line = document.createElement('span');
+  line.className = 'line';
+  line.append(...markVocab(S.stage.ask, S.stage.vocab));
   const icon = document.createElement('span');
   icon.className = 'say';
   icon.textContent = '🔊';
-  ask.appendChild(icon);
+  ask.append(line, icon);
+  renderAssist($('cam-assist'), S.stage);
   show('cam');
   Clock.start(S.shotSeconds, timeUp);
 }
@@ -2244,6 +2518,15 @@ function ending(out) {
     what.className = 'what line';
     what.textContent = it.object;
     card.append(where, what);
+    // The run ends with all seven target phrases back on screen, each next to
+    // the real object this child went and found for it. The list was already
+    // here; naming the words turns it into a review rather than a receipt.
+    if (it.words) {
+      const w = document.createElement('span');
+      w.className = 'learned';
+      w.textContent = it.words;
+      card.appendChild(w);
+    }
     grid.appendChild(card);
   });
 
