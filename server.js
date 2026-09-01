@@ -108,6 +108,13 @@ const JUDGE_SCHEMA = {
  * same every stage. Keeping them in one template means tuning the feel of the
  * whole game is a single edit rather than seven.
  */
+/** The words this stage teaches, for the recast instruction below. */
+function listWords(stage) {
+  const w = (stage.vocab || []).map(v => `"${v.word}"`);
+  if (!w.length) return 'the words the punk used';
+  return w.length === 1 ? w[0] : `${w.slice(0, -1).join(', ')} or ${w[w.length - 1]}`;
+}
+
 function judgeSystem(stage) {
   return `You are the judge in a comedy prison-break video game. The player's character is a loud, cocky purple-haired punk teenager trying to break out of prison. He can't reach anything himself, so at each stage he asks the player to find a real object near them and hold it up. You decide whether what they found will do.
 
@@ -129,6 +136,7 @@ RULES
 
 THE VOICE
 "reason" is the punk speaking out loud, and the player reads it exactly as you wrote it. One line, twelve words at most, present tense, cocky and daft. Delighted when it works, withering about the object when it doesn't — never rude about the player.
+This is an English-learning game, so when you PASS a photo, name the object and work ${listWords(stage)} back into the line — hearing the word again, about the thing they just went and found, is how it sticks. Never force it to the point of sounding odd.
 Passes sound like: "A biro! Get in." / "Perfect. This lock's got no idea."
 Fails sound like: "That's a mug, mate. I said pointy." / "Can't pick a lock with a banana."
 Unreadable sounds like: "It's pitch black, I can't see a thing!" / "Whoa, too close — back up a bit."
@@ -290,6 +298,23 @@ function artPath(index) { return assetPath(`stage-${index + 1}`); }
  */
 const INTRO_ART = ['intro-1', 'intro-2'].map(assetPath);
 
+/**
+ * The two words this stage is teaching, plus the whole line, in the language the
+ * run was started in. Only that one language is sent: the client cannot switch
+ * mid-run, and there is no reason to ship four translations to every player.
+ *
+ * An English run gets the words but no glosses — bolding them still helps the
+ * reader notice the form, and there is nothing to translate them into.
+ */
+function vocabFor(stage, lang) {
+  const words = stage.vocab || [];
+  const local = lang && lang !== 'en';
+  return {
+    vocab: words.map(v => ({ word: v.word, local: local ? (v[lang] || null) : null })),
+    askLocal: local ? ((stage.askLocal || {})[lang] || null) : null,
+  };
+}
+
 /** What the client is allowed to know about the current position. */
 function statePayload(s) {
   const stage = STAGES[s.stage];
@@ -302,7 +327,10 @@ function statePayload(s) {
     attemptsPerStage: ATTEMPTS_PER_STAGE,
     shotSeconds: SHOT_SECONDS,
     over: s.over,
-    stage: stage && !s.over ? { id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage) } : null,
+    stage: stage && !s.over ? {
+      id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage),
+      ...vocabFor(stage, s.lang),
+    } : null,
     intro: INTRO_ART,
     evidence: s.evidence,
   };
@@ -362,7 +390,12 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
   if (verdict === 'fail' && Number.isFinite(confidence) && confidence < 0.5) verdict = 'unreadable';
 
   if (verdict === 'pass') {
-    s.evidence.push({ stage: stage.id, scene: stage.scene, object: String(out.object || '').slice(0, 60) });
+    s.evidence.push({
+      stage: stage.id, scene: stage.scene,
+      object: String(out.object || '').slice(0, 60),
+      // Carried so the ending can show the words this object satisfied.
+      words: (stage.vocab || []).map(v => v.word).join(' · '),
+    });
     s.stage += 1;
     s.attemptsLeft = ATTEMPTS_PER_STAGE;
     if (s.stage >= TOTAL_STAGES) s.over = 'escaped';
