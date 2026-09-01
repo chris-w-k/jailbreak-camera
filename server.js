@@ -83,6 +83,21 @@ const VISION_MODELS = [
   'gemini-2.0-flash',
 ];
 let MODELS = { vision: VISION_MODELS[0], resolved: false, note: '' };
+
+// --- the punk's voice ---
+// Same key, same generateContent endpoint as the judge — Gemini's TTS models
+// are not a separate Google Cloud product, just a different response modality.
+// No ladder here: unlike the vision model, a missing voice model has an easy
+// fallback (the client's own speechSynthesis), so it's not worth the extra
+// ListModels complexity — see withVoice().
+const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+const TTS_VOICE = 'Zubenelgenubi';
+// Gemini TTS reads a "Say X:" prefix as a delivery instruction, not as text to
+// speak out loud — this is how you steer a prebuilt voice without SSML. Same
+// style guide as JUDGE_SCHEMA's "reason" field, so a live reaction and a
+// pre-baked ask (tools/generate-voice.js uses this same string) sound like the
+// same character.
+const TTS_STYLE = 'Say in a cocky, gravelly, laddish teenage-punk voice, delighted when it works and withering about the object when it does not:';
 // Set when Google tells us the key itself is no good. Worth its own flag: the
 // server still boots and still serves the page, but every judgement will fail,
 // so this is the one condition where the logs need to say what to go and fix.
@@ -299,6 +314,22 @@ function artPath(index) { return assetPath(`stage-${index + 1}`); }
 const INTRO_ART = ['intro-1', 'intro-2'].map(assetPath);
 
 /**
+ * Pre-baked audio for the punk's fixed lines (the seven asks, the two intro
+ * beats) — written once by `npm run voice` and served like the stage art above.
+ * Same null-when-missing rule: an unvoiced line just falls back to the client's
+ * own speechSynthesis instead of asking for a file that isn't there.
+ */
+const voiceCache = new Map();
+function voiceAssetPath(name) {
+  if (!voiceCache.has(name)) {
+    voiceCache.set(name, fs.existsSync(path.join(ROOT, 'assets', 'voice', `${name}.wav`)) ? `/assets/voice/${name}.wav` : null);
+  }
+  return voiceCache.get(name);
+}
+function voicePath(index) { return voiceAssetPath(`stage-${index + 1}`); }
+const INTRO_VOICE = ['intro-1', 'intro-2'].map(voiceAssetPath);
+
+/**
  * The two words this stage is teaching, plus the whole line, in the language the
  * run was started in. Only that one language is sent: the client cannot switch
  * mid-run, and there is no reason to ship four translations to every player.
@@ -328,12 +359,79 @@ function statePayload(s) {
     shotSeconds: SHOT_SECONDS,
     over: s.over,
     stage: stage && !s.over ? {
-      id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage),
+      id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage), voice: voicePath(s.stage),
       ...vocabFor(stage, s.lang),
     } : null,
     intro: INTRO_ART,
+    introVoice: INTRO_VOICE,
     evidence: s.evidence,
   };
+}
+
+// ---------------------------------------------------------------------------
+// live voice — only for the reason line, which doesn't exist until a photo
+// (or a timeout) has one to react to. Everything else is pre-baked; see above.
+// ---------------------------------------------------------------------------
+
+/** 16-bit PCM has no container of its own; <audio> and Audio() both need one. */
+function pcmToWav(pcm, sampleRate = 24000, channels = 1, bitDepth = 16) {
+  const blockAlign = channels * (bitDepth / 8);
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);                     // PCM
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * blockAlign, 28); // byte rate
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitDepth, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+// Fixed reason pools repeat across sessions (timeouts, mock mode, the judge's
+// own error fallback) — a text-keyed cache means every session after the first
+// gets those for free. Per-photo reasons are effectively unique text and never
+// hit, which costs nothing beyond the live call it would have made anyway.
+const ttsCache = new Map();
+const TTS_CACHE_MAX = 200;
+
+async function synthesizeSpeech(text) {
+  if (ttsCache.has(text)) return ttsCache.get(text);
+  const data = await gemini(TTS_MODEL, {
+    contents: [{ parts: [{ text: `${TTS_STYLE} "${text}"` }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: TTS_VOICE } } },
+    },
+  }, { tries: 2 });
+  const part = (data?.candidates?.[0]?.content?.parts || []).find(p => p.inlineData?.data);
+  if (!part) throw new Error(`${TTS_MODEL} returned no audio part (${data?.candidates?.[0]?.finishReason || 'unknown'})`);
+  const rate = Number(/rate=(\d+)/.exec(part.inlineData.mimeType || '')?.[1]) || 24000;
+  const wav = pcmToWav(Buffer.from(part.inlineData.data, 'base64'), rate);
+  const result = { mime: 'audio/wav', data: wav.toString('base64') };
+  if (ttsCache.size >= TTS_CACHE_MAX) ttsCache.delete(ttsCache.keys().next().value);
+  ttsCache.set(text, result);
+  return result;
+}
+
+/**
+ * Best-effort only: a TTS hiccup must cost the flavour and nothing else, same
+ * rule as the client-side Speech.say() it feeds. MOCK skips it entirely — that
+ * mode's whole point is no network calls and no cost.
+ */
+async function withVoice(payload) {
+  if (MOCK || !payload.reason) return payload;
+  try {
+    return { ...payload, voice: await synthesizeSpeech(payload.reason) };
+  } catch (e) {
+    console.warn('\x1b[33m⚠\x1b[0m voice failed, falling back to on-device speech:', e.message);
+    return payload;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -373,13 +471,13 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
     // The model being unavailable must never cost an attempt. A flaky phone
     // connection ending a run would feel like the game cheating.
     console.error('\x1b[31m✖\x1b[0m judge failed:', e.message);
-    return {
+    return withVoice({
       ...statePayload(s),
       verdict: 'error',
       object: null,
       reason: "The light's gone funny — try that again.",
       latencyMs: Date.now() - t0,
-    };
+    });
   }
 
   let verdict = ['pass', 'fail', 'unreadable'].includes(out.verdict) ? out.verdict : 'unreadable';
@@ -405,7 +503,7 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
   }
   // 'unreadable' changes nothing at all — free retry.
 
-  return {
+  return withVoice({
     ...statePayload(s),
     verdict,
     object: String(out.object || '').slice(0, 60) || null,
@@ -414,7 +512,7 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
     latencyMs: Date.now() - t0,
     // Only meaningful on 'escaped', but harmless otherwise.
     durationMs: Date.now() - s.startedAt,
-  };
+  });
 }
 
 /**
@@ -434,13 +532,13 @@ function timeUp(sessionId) {
   s.attemptsLeft -= 1;
   if (s.attemptsLeft <= 0) s.over = 'caught';
 
-  return {
+  return withVoice({
     ...statePayload(s),
     verdict: 'timeout',
     object: null,
     reason: TIMEOUT_LINES[(ATTEMPTS_PER_STAGE - s.attemptsLeft - 1 + s.photos) % TIMEOUT_LINES.length],
     durationMs: Date.now() - s.startedAt,
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -533,6 +631,14 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
       return res.end(buf);
     }
+    // Pre-baked voice lines, same numbered-route-not-a-static-server rule as art.
+    const voice = /^\/assets\/voice\/(stage-[1-9][0-9]?|intro-[12])\.wav$/.exec(url.pathname);
+    if (req.method === 'GET' && voice) {
+      const buf = readBinIfExists(path.join(ROOT, 'assets', 'voice', `${voice[1]}.wav`));
+      if (!buf) return json(res, 404, { error: 'no voice yet' });
+      res.writeHead(200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'public, max-age=3600' });
+      return res.end(buf);
+    }
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return json(res, 200, {
         ok: true, mock: MOCK, hasKey: !!API_KEY, keyRejected: KEY_REJECTED, models: MODELS,
@@ -576,7 +682,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/timeout') {
       requireUnlocked(req);
       const body = await readBody(req);
-      return json(res, 200, timeUp(body.sessionId));
+      return json(res, 200, await timeUp(body.sessionId));
     }
     if (req.method === 'POST' && url.pathname === '/api/abandon') {
       // Best-effort tidy-up when a player closes the tab, so the map doesn't
@@ -631,6 +737,9 @@ async function resolveModels() {
     console.log(`     http://localhost:${PORT}`);
     console.log(`     vision: ${MODELS.vision}`);
     if (MODELS.note) console.log(`     \x1b[90m${MODELS.note}\x1b[0m`);
+    console.log(MOCK
+      ? `     voice : off in mock mode`
+      : `     voice : ${TTS_MODEL} · ${TTS_VOICE} (live, for the per-photo reason line)`);
     if (KEY_REJECTED) {
       console.log('');
       console.log(`     \x1b[31mGEMINI_API_KEY was rejected by Google. Every photo will fail.\x1b[0m`);
@@ -646,6 +755,10 @@ async function resolveModels() {
     console.log(introCount === 2
       ? `     intro : both stills present`
       : `     \x1b[90mintro : ${introCount}/2 — add assets/intro-1.png and intro-2.png\x1b[0m`);
+    const voiceCount = [...STAGES.map((_, i) => voicePath(i)), ...INTRO_VOICE].filter(Boolean).length;
+    console.log(voiceCount === STAGES.length + 2
+      ? `     lines : all ${voiceCount} pre-baked`
+      : `     \x1b[90mlines : ${voiceCount}/${STAGES.length + 2} pre-baked — run \`npm run voice\` for the rest\x1b[0m`);
     console.log(ACCESS_CODE
       ? `     gate  : ON — a code is required, so app users cannot play`
       : `     \x1b[90mgate  : off (set ACCESS_CODE to require one)\x1b[0m`);
