@@ -1247,14 +1247,14 @@ const Lang = (() => {
 })();
 
 /* =========================================================================
-   ANALYTICS — additive JailbreakCamera.* events only.
+   ANALYTICS — additive EscapeJailCamera.* events only.
    This app has its own prefix and its own $app_name, so nothing it sends
    touches, renames or redefines any event belonging to another product.
    Inert unless the server hands over a key, and never allowed to throw:
    losing an attempt to a blocked analytics script would be absurd.
    ========================================================================= */
 const Analytics = (() => {
-  const APP = 'JailbreakCamera';
+  const APP = 'EscapeJailCamera';
   let ready = false;
 
   function load(host) {
@@ -1294,6 +1294,17 @@ const Analytics = (() => {
           Object.assign({ language_code: Lang.code }, props || {}), opts);
       } catch { /* never costs an attempt */ }
     },
+    // $screen is PostHog's own pre-existing screen-view event (the one the
+    // mobile SDKs send automatically on every screen change) rather than a
+    // one-off custom event — kept as its literal name, unprefixed, so it
+    // rolls up the same way a native screen view would. $app_name (set at
+    // init, above) is what still keeps this app's screens separable.
+    screen(name) {
+      try {
+        if (!ready || !window.posthog) return;
+        window.posthog.capture('$screen', { $screen_name: name, language_code: Lang.code });
+      } catch { /* never costs an attempt */ }
+    },
     register(props) { try { if (ready && window.posthog) window.posthog.register(props || {}); } catch {} },
     unregister(key) { try { if (ready && window.posthog) window.posthog.unregister(key); } catch {} },
   };
@@ -1304,12 +1315,31 @@ const Analytics = (() => {
    ========================================================================= */
 const $ = id => document.getElementById(id);
 
+// Slug shown in the DOM/URL → the descriptive name that goes out on the
+// $screen event. "end" isn't here: it's win or lose, decided below from the
+// outcome the caller already stamped onto the body.
+const SCREEN_NAMES = {
+  gate: 'Access Gate',
+  title: 'Title',
+  primer: 'Camera Permission Primer',
+  intro: 'Intro',
+  brief: 'Stage Brief',
+  cam: 'Camera',
+  judge: 'Judging',
+  verdict: 'Verdict',
+  error: 'Error',
+};
+
 function show(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 'screen-' + name));
   // Which gradient the page wears is a function of which screen is up — see the
   // body[data-screen] rules. All of them are charcoal; the hue is the hint.
   document.body.dataset.screen = name;
   window.scrollTo(0, 0);
+  const screenName = name === 'end'
+    ? (document.body.dataset.outcome === 'win' ? 'Escaped' : 'Caught')
+    : (SCREEN_NAMES[name] || name);
+  Analytics.screen(screenName);
 }
 
 /** Fills every [data-t] from the current language. Called again on a switch. */
@@ -1931,12 +1961,18 @@ async function boot() {
 
   try { health = await (await fetch('/api/health')).json(); }
   catch (e) { health = {}; }
-  Analytics.init(health.posthog);
+  // Awaited so the analytics script has actually loaded and $app_name is
+  // registered before anything tries to capture off the back of it — page_ready
+  // and the title screen's $screen event both need `ready` to be true.
+  await Analytics.init(health.posthog);
   Analytics.register({ mock_mode: !!health.mock, in_webview: Bridge.inApp });
   Analytics.capture('page_ready', { in_webview: Bridge.inApp, start_sends: Bridge.startSends });
 
   $('start').disabled = false;
   if (health.gated && !health.unlocked) { show('gate'); $('code').focus(); }
+  // Title starts already visible in the HTML (class="on"), so it never goes
+  // through show() the way every other screen does — fire its $screen by hand.
+  else Analytics.screen('Title');
 }
 
 async function unlock() {
@@ -2256,6 +2292,10 @@ async function shoot() {
   if (!shot) return toast('The camera gave us an empty frame — try again.');
   Clock.stop();
   Chip.sfx.blip();
+  Analytics.capture('picture_taken', {
+    stage: S.stage.id, stage_number: S.stageNumber,
+    attempt: (S.attemptsPerStage - S.attemptsLeft) + 1, source: 'camera',
+  });
   submit(shot);
 }
 
@@ -2306,6 +2346,10 @@ async function onFile(e) {
   // nothing and shouldn't cost them the run either.
   if (!shot) return toast("Couldn't read that one — try another photo.");
   Chip.sfx.blip();
+  Analytics.capture('picture_taken', {
+    stage: S.stage.id, stage_number: S.stageNumber,
+    attempt: (S.attemptsPerStage - S.attemptsLeft) + 1, source: 'file',
+  });
   submit(shot);
 }
 
@@ -2425,6 +2469,17 @@ function verdict(out, shot) {
     stage: judged.id, stage_number: out.stageNumber, verdict: kind,
     object: out.object, confidence: out.confidence, latency_ms: out.latencyMs,
   });
+  // Feedback on whether the photo itself was right, as distinct from 'verdict'
+  // above (which also covers the non-judgment outcomes: unreadable, error,
+  // timeout). Unreadable/error/timeout never actually judged an object, so
+  // there's no correct/incorrect answer to report for them.
+  if (kind === 'pass' || kind === 'fail') {
+    Analytics.capture('picture_feedback_given', {
+      stage: judged.id, stage_number: out.stageNumber, attempt: judgedAttempt,
+      answer: kind === 'pass' ? 'correct' : 'incorrect',
+      object: out.object, confidence: out.confidence,
+    });
+  }
   if (kind === 'pass') Analytics.capture('stage_passed', { stage: judged.id, attempts_used: judgedAttempt });
   if (wasted && out.over !== 'caught') Analytics.capture('stage_failed', { stage: judged.id, attempt: judgedAttempt, attempts_left: out.attemptsLeft, timed_out: kind === 'timeout' });
 

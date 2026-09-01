@@ -170,10 +170,24 @@ client-side downscaling that keeps normal play far below it.
 
 ## 11. Analytics (PostHog)
 
-Beyond the jailbreak events, the ones that tell us whether a rubric is wrong:
+`$app_name` is `EscapeJailCamera` on every event (registered once at init), which
+is what keeps this prototype's traffic separable from every other app sharing the
+project — jailbreak's own events use `EscapeJail` the same way.
+
+Every screen fires PostHog's own pre-existing screen-view event, `$screen`, with
+a descriptive `$screen_name` (Title, Camera Permission Primer, Stage Brief,
+Camera, Judging, Verdict, Escaped/Caught, …) — the same event the mobile SDKs
+send automatically, sent by hand here since this runs in a web view.
+
+Beyond that and the jailbreak events, the ones that tell us whether a rubric is
+wrong:
 
 - `stage_started` — stage id, language
+- `picture_taken` — stage id, attempt number, source (`camera` or `file`)
 - `photo_submitted` — stage id, attempt number
+- `picture_feedback_given` — stage id, attempt number, `answer` (`correct` /
+  `incorrect`), `object`, confidence — fired only for an actual pass/fail
+  judgment, since unreadable/error/timeout never judged an object
 - `verdict` — stage id, verdict, `object`, confidence, latency
 - `stage_passed` / `stage_failed` — attempts used
 - `run_caught` — stage reached
