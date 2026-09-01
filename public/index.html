@@ -1201,19 +1201,29 @@ const Speech = (() => {
      * over browser TTS when present. Passing nothing keeps the old behaviour.
      */
     say(text, voiceClip) {
+      if (Chip.muted || !text) return;
+      // Two independent try/catches, not one: setting up the clip and falling
+      // back to browser TTS must not share a catch, or an exception in the
+      // clip path (a reused <audio> that WebKit won't let us touch a certain
+      // way, say) swallows the fallback along with it and the line goes
+      // completely silent instead of merely losing the real recording.
       try {
-        if (Chip.muted || !text) return;
         const src = clipSrc(voiceClip);
         if (src) {
           // Reuse the element unlockAudio() already got a real play() out of,
           // rather than a fresh Audio() — see unlockAudio() for why. Falls
           // back to a plain new one if prime() never ran (shouldn't happen;
-          // the game wires it to the very first click anywhere).
+          // the game wires it to the very first click anywhere). Setting .src
+          // already resets playback position on its own once the new source
+          // loads, so there is nothing to rewind by hand here — an explicit
+          // clip.currentTime = 0 right after changing .src used to throw
+          // InvalidStateError on WebKit (no media loaded yet to seek within),
+          // which is exactly what made the pre-baked lines go silent the
+          // moment assets/voice/*.wav started existing.
           if (clip && clip !== unlockedAudio) { try { clip.pause(); } catch { /* already gone */ } }
           clip = unlockedAudio || new Audio();
           clip.onerror = () => { console.warn('[speech] clip errored, falling back:', clip.error && clip.error.message); this.sayBrowser(text); };
           clip.src = src;
-          clip.currentTime = 0;
           const p = clip.play();
           if (p && p.catch) p.catch(e => {
             console.warn('[speech] clip.play() blocked, falling back:', e && e.message);
@@ -1222,10 +1232,10 @@ const Speech = (() => {
           });
           return;
         }
-        this.sayBrowser(text);
       } catch (e) {
-        console.warn('speech unavailable:', e && e.message);
+        console.warn('[speech] clip setup failed, falling back:', e && e.message);
       }
+      try { this.sayBrowser(text); } catch (e) { console.warn('speech unavailable:', e && e.message); }
     },
     stop() {
       try { if (clip) clip.pause(); } catch { /* nothing to stop */ }
