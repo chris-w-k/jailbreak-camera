@@ -55,6 +55,35 @@ Look at them before committing; a character that's drifted off-model is worth
 regenerating. Until a stage has a PNG the game shows a labelled holding frame,
 so it's playable with no art at all.
 
+## Voice
+
+The punk talks with a real voice — Gemini's TTS models, voice `Zubenelgenubi` —
+not the browser's `speechSynthesis`, which sounds different on every device and
+has no engine at all behind it in Android's WebView (see `Speech` in
+`public/index.html`). Same key as everything else here; Gemini's TTS is a
+response modality on the same `generateContent` call the judge already makes,
+not a separate Google Cloud product.
+
+The seven asks and the two intro beats are fixed English lines, so — same
+reasoning as the stage art — there's no reason to pay for and wait on them at
+runtime:
+
+```bash
+npm run voice                    # writes assets/voice/stage-1.wav … intro-2.wav
+npm run voice -- --force         # redo all of them
+npm run voice -- stage-3 intro-1 # redo just those
+```
+
+The per-photo `reason` line can't be pre-baked — it doesn't exist until a photo
+is judged — so `server.js` synthesizes that one live and hands the audio back
+with the verdict. Same model, same voice, same style instruction as the pre-gen
+script, so a fixed ask and a live reaction sound like one character rather than
+two. A synthesis failure just falls back to the browser's `speechSynthesis`, so
+losing the voice call never costs the player anything but the polish.
+
+Until a line has a `.wav`, that line falls back the same way. The game is fully
+playable with no voice files at all, same as with no art.
+
 **What the images are of.** Stage 1 is the punk alone in his cell. From stage 2 on,
 the frame is the space *between him and the guard*, and that space shrinks: a
 silhouette at the far end of a corridor, a man through a doorway, a man an arm's
@@ -114,20 +143,22 @@ Three rules do most of the work of making it feel fair rather than broken:
 - **A judge that errors or times out costs nothing either.** A flaky phone
   connection can't lose you the run.
 
-`reason` is the punk speaking, shown to the player verbatim and read aloud by
-`speechSynthesis`, so the system prompt in `server.js` carries a voice guide
+`reason` is the punk speaking, shown to the player verbatim and read aloud —
+see [Voice](#voice) — so the system prompt in `server.js` carries a voice guide
 rather than just a rubric. Tune the feel of the whole game there; tune individual
 difficulty in `stages.js`.
 
 ## Layout
 
 ```
-server.js               http, Gemini vision proxy, sessions, gate, rate limits
+server.js               http, Gemini vision + voice proxy, sessions, gate, rate limits
 stages.js               the seven stages: asks, rubrics, art prompts. Shared
 public/index.html       the whole client — screens, camera, chiptune, speech
 public/i18n.js          interface strings (en/es/pt/tr)
 tools/generate-art.js   one-off stage art generation
+tools/generate-voice.js one-off voice generation for the fixed lines
 assets/                 stage-N.png, committed once generated
+assets/voice/           stage-N.wav / intro-N.wav, committed once generated
 ```
 
 Adding or reordering a stage is a data change in `stages.js` and nothing else.
@@ -135,10 +166,12 @@ Adding or reordering a stage is a data change in `stages.js` and nothing else.
 ## Carried over from jailbreak
 
 `CHARACTER_SHEET` and `ART_STYLE` verbatim, the palette and type, the WebAudio
-chiptune engine, the `speechSynthesis` voice picker, the `gemini()` transport with
-its model-preference ladder, `askJSON()` with forced schemas, the access gate and
-rate limiters, and the shape of the whole thing — one zero-dependency Node file
-plus one HTML file.
+chiptune engine, the `gemini()` transport with its model-preference ladder,
+`askJSON()` with forced schemas, the access gate and rate limiters, and the
+shape of the whole thing — one zero-dependency Node file plus one HTML file.
+The `speechSynthesis` voice picker is carried over too, now as the fallback
+`Speech` reaches for when a real Gemini-voiced clip isn't available — see
+[Voice](#voice).
 
 ## What's deliberately not here
 

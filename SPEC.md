@@ -22,7 +22,7 @@ whether it fits what the punk asked for. Three misses and the guard catches you.
 | **First build** | Vertical slice, end to end. All seven stages are written as data, since the rubric shape was the same work seven times over; the tuning pass is still stage 1 only |
 | **Restart rule** | Getting caught restarts the whole run |
 | **Judge language** | `reason` is English always. No `reasonLocal` split for the MVP |
-| **Extras kept** | Access code gate, PostHog, i18n (en/es/pt/tr), Web Speech read-aloud, WebAudio chiptune |
+| **Extras kept** | Access code gate, PostHog, i18n (en/es/pt/tr), Gemini-voiced read-aloud (Web Speech as fallback), WebAudio chiptune |
 
 ## 2. Core loop
 
@@ -59,7 +59,7 @@ Reused as close to verbatim as possible, so the two prototypes read as siblings.
 | Access gate + rate limits | `server.js:55` | `ACCESS_CODE`, `GAMES_PER_IP_PER_HOUR`, `GAMES_PER_DAY` — matters more here, photos cost more than text turns |
 | Session store + reaper | `server.js:428` | Same in-memory map, TTL and `MAX_SESSIONS` backstop |
 | Chiptune engine | `public/index.html:327` | Full WebAudio synth, no audio files. `blip`/`select`/`confirm`/`thud`/`win`/`lose` already map onto shutter, pass, fail and caught |
-| Read-aloud | `public/index.html:544` | `speechSynthesis` with an English voice picker, no files and no API calls |
+| Read-aloud | `public/index.html`, `Speech` | Gemini TTS (voice `Zubenelgenubi`): pre-baked `.wav` files for the fixed lines, synthesized live for the per-photo `reason`. `speechSynthesis` only as a fallback |
 | `MOCK=1` | `package.json` | Fake judge, no key and no camera needed |
 | The punk's voice | `TURN1_LINE` + narrative prompts | "Not again! Yo — get me out of here!" — same energy in every stage brief and verdict line |
 
@@ -201,7 +201,7 @@ actually point their phones at, which is how the accept sets get tuned.
 
 Same split as jailbreak: `public/i18n.js` carries UI chrome for en/es/pt/tr, and it
 degrades to English if the fetch fails. The punk's spoken lines stay English in
-every language, because an English `speechSynthesis` voice reads them aloud.
+every language, because an English Gemini voice (`Zubenelgenubi`) reads them aloud.
 
 The open question was the judge's `reason` line — it's the punk speaking, so by
 jailbreak's rule it stays English, but it's also the main feedback the player gets.
