@@ -41,6 +41,9 @@ window.I18N = {
       cam_denied: 'No camera, no problem — you can pick a photo instead.',
       cam_pick: 'CHOOSE A PHOTO',
       cam_retry: 'TRY THE CAMERA AGAIN',
+      // Shown when the device will not put the camera feed inside the page, so
+      // the shot is taken in the phone's own camera instead.
+      cam_native: 'This phone opens the camera full screen — snap it there and you’re straight back.',
 
       hud_stage: 'STAGE {n}/{total}',
       // The punk's own words, so English in every language — same rule as the
@@ -107,6 +110,7 @@ window.I18N = {
       cam_denied: 'Sin cámara no pasa nada: puedes elegir una foto.',
       cam_pick: 'ELEGIR UNA FOTO',
       cam_retry: 'PROBAR LA CÁMARA OTRA VEZ',
+      cam_native: 'Este móvil abre la cámara a pantalla completa: haz la foto ahí y volverás enseguida.',
 
       hud_stage: 'FASE {n}/{total}',
       intro_next: 'SIGUIENTE',
@@ -168,6 +172,7 @@ window.I18N = {
       cam_denied: 'Sem câmera, sem problema: você pode escolher uma foto.',
       cam_pick: 'ESCOLHER UMA FOTO',
       cam_retry: 'TENTAR A CÂMERA DE NOVO',
+      cam_native: 'Este celular abre a câmera em tela cheia: tire a foto ali e você volta na hora.',
 
       hud_stage: 'FASE {n}/{total}',
       intro_next: 'SEGUINTE',
@@ -229,6 +234,7 @@ window.I18N = {
       cam_denied: 'Kamera yoksa sorun değil, bir fotoğraf seçebilirsin.',
       cam_pick: 'FOTOĞRAF SEÇ',
       cam_retry: 'KAMERAYI TEKRAR DENE',
+      cam_native: 'Bu telefon kamerayı tam ekran açar: fotoğrafı orada çek, hemen geri dönersin.',
 
       hud_stage: 'BÖLÜM {n}/{total}',
       intro_next: 'SONRAKİ',
