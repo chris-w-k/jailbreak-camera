@@ -67,12 +67,43 @@ const GUARD_SHEET = [
  * has dozens of valid matches in any room; stage 6 has a handful. The early
  * stages teach the mechanic, the late ones make you get up and go looking.
  */
+/**
+ * VOCABULARY
+ *
+ * Each stage teaches two words, and the game is unusually well shaped for it:
+ * the child reads the word, then has to find a real object in the room that
+ * matches it, then hears the word again in the judge's reaction. Word, object,
+ * confirmation — that physical loop sticks far better than a flashcard, so the
+ * words below are the ones the task actually turns on, not the longest ones in
+ * the sentence.
+ *
+ * `vocab[].word` must appear verbatim in `ask`; the client bolds it and, on a
+ * tap, shows the gloss beside the English rather than replacing it. `askLocal`
+ * is the whole line, offered only as a second resort — the consistent finding
+ * in this area is that a learner handed a full translation reads the
+ * translation and skips the English, so it sits behind one more tap and resets
+ * every stage.
+ *
+ * These are authored here as reviewable data rather than machine-translated at
+ * runtime, because a vocabulary game is the last place to be guessing. Written
+ * by Claude, NOT reviewed by native speakers — the Turkish especially deserves
+ * a second pair of eyes before real children see it.
+ */
 const STAGES = [
   {
     id: 'lockpick',
     scene: 'Cell Block D',
     ask: 'Find me something sharp and pointy — I can pick this lock!',
     rubric: 'An object with a thin, narrow or pointed end that could plausibly be poked into a lock: a pen, pencil, knife, fork, hairclip, paperclip, nail, screwdriver, scissors, key, skewer, tweezers, safety pin.',
+    vocab: [
+      { word: 'sharp',  es: 'afilado',    pt: 'afiado',  tr: 'keskin' },
+      { word: 'pointy', es: 'puntiagudo', pt: 'pontudo', tr: 'sivri' },
+    ],
+    askLocal: {
+      es: '¡Búscame algo afilado y puntiagudo: puedo forzar esta cerradura!',
+      pt: 'Ache algo afiado e pontudo — eu consigo abrir essa fechadura!',
+      tr: 'Bana keskin ve sivri bir şey bul — bu kilidi açabilirim!',
+    },
     accepts: ['a ballpoint pen', 'a pencil', 'a kitchen knife', 'a fork', 'a hairclip', 'a paperclip', 'scissors', 'a screwdriver', 'a nail'],
     rejects: ['a mug', 'a book', 'a pillow', 'a banana', 'a shoe'],
     guard: false,
@@ -92,6 +123,15 @@ const STAGES = [
     scene: 'The Corridor',
     ask: "Something dark I can throw over myself — quick, before he looks!",
     rubric: 'Any dark-coloured object large enough to cover a person: a dark jacket, hoodie, coat, blanket, towel, sheet, bin bag, dark bag, dark cloth. It must read as dark in the photo — black, charcoal, navy, dark brown, dark green.',
+    vocab: [
+      { word: 'dark',       es: 'oscuro',            pt: 'escuro',          tr: 'koyu' },
+      { word: 'throw over', es: 'echar por encima',  pt: 'jogar por cima',  tr: 'üstüne atmak' },
+    ],
+    askLocal: {
+      es: '¡Algo oscuro que pueda echarme por encima — rápido, antes de que mire!',
+      pt: 'Algo escuro que eu possa jogar por cima de mim — rápido, antes que ele olhe!',
+      tr: 'Üstüme atabileceğim koyu renk bir şey — çabuk, o bakmadan önce!',
+    },
     accepts: ['a black hoodie', 'a dark jacket', 'a navy blanket', 'a black bin bag', 'a dark towel'],
     rejects: ['a white t-shirt', 'a pale pillowcase', 'a bright yellow coat', 'a mug', 'a pen'],
     guard: true,
@@ -109,6 +149,15 @@ const STAGES = [
     scene: 'The Laundry',
     ask: 'I need a uniform. Any clothes will do — hold something up!',
     rubric: 'Any item of clothing or wearable garment: a shirt, t-shirt, trousers, jeans, jacket, coat, jumper, dress, hat, cap, sock, shoe, uniform, apron, hi-vis vest. Colour does not matter here.',
+    vocab: [
+      { word: 'uniform', es: 'uniforme', pt: 'uniforme', tr: 'üniforma' },
+      { word: 'clothes', es: 'ropa',     pt: 'roupa',    tr: 'kıyafet' },
+    ],
+    askLocal: {
+      es: 'Necesito un uniforme. Cualquier ropa sirve: ¡levanta algo!',
+      pt: 'Preciso de um uniforme. Qualquer roupa serve — levanta alguma coisa!',
+      tr: 'Bana bir üniforma gerek. Herhangi bir kıyafet olur — bir şey kaldır!',
+    },
     accepts: ['a shirt', 'jeans', 'a jumper', 'a cap', 'a sock', 'a hi-vis vest'],
     rejects: ['a towel', 'a cushion', 'a mug', 'a laptop', 'a plant'],
     guard: true,
@@ -126,6 +175,15 @@ const STAGES = [
     scene: 'The Guard Post',
     ask: "Something that makes a racket! I need him looking the other way.",
     rubric: 'An object that could make a loud noise if thrown, shaken, dropped or set off: keys, a phone, an alarm clock, a bell, a bottle, a tin, a saucepan, cutlery, a musical instrument, a toy that makes noise, a speaker, a whistle, a bunch of coins.',
+    vocab: [
+      { word: 'racket',        es: 'mucho ruido',      pt: 'muito barulho',      tr: 'gürültü' },
+      { word: 'the other way', es: 'para otro lado',   pt: 'para o outro lado',  tr: 'başka tarafa' },
+    ],
+    askLocal: {
+      es: '¡Algo que haga mucho ruido! Necesito que mire para otro lado.',
+      pt: 'Algo que faça muito barulho! Preciso que ele olhe para o outro lado.',
+      tr: 'Çok gürültü çıkaran bir şey! Başka tarafa bakması gerek.',
+    },
     accepts: ['a bunch of keys', 'a mobile phone', 'an alarm clock', 'a saucepan', 'a glass bottle', 'a guitar', 'a whistle'],
     rejects: ['a pillow', 'a sock', 'a towel', 'a sheet of paper', 'a cushion'],
     guard: true,
@@ -142,6 +200,15 @@ const STAGES = [
     scene: 'The Mess Hall',
     ask: 'The dogs are on me! Something with a strong smell — anything!',
     rubric: 'An object with a strong or distinctive smell: any food or drink, coffee, tea, spices, herbs, fruit, cheese, onion, garlic, vinegar, cleaning spray, bleach, soap, shampoo, deodorant, perfume, aftershave, a scented candle, a bin.',
+    vocab: [
+      { word: 'strong', es: 'fuerte', pt: 'forte',  tr: 'güçlü' },
+      { word: 'smell',  es: 'olor',   pt: 'cheiro', tr: 'koku' },
+    ],
+    askLocal: {
+      es: '¡Los perros me han olido! Algo con un olor fuerte — ¡lo que sea!',
+      pt: 'Os cachorros estão atrás de mim! Algo com um cheiro forte — qualquer coisa!',
+      tr: 'Köpekler peşimde! Güçlü kokusu olan bir şey — ne olursa!',
+    },
     accepts: ['a jar of coffee', 'an onion', 'a bottle of cleaning spray', 'a bar of soap', 'a bottle of perfume', 'a banana'],
     rejects: ['a pen', 'a book', 'a phone', 'a spoon', 'a chair'],
     guard: true,
@@ -159,6 +226,15 @@ const STAGES = [
     scene: 'The Fence',
     ask: "This wire'll shred me. Something to protect my hands!",
     rubric: 'An object that could be wrapped around or worn on the hands as padding: gloves, mittens, an oven glove, a sock, a scarf, a thick cloth, a tea towel, a rag, a jumper sleeve, a folded towel, bubble wrap, a thick rubber mat.',
+    vocab: [
+      { word: 'shred',   es: 'destrozar', pt: 'rasgar',   tr: 'paramparça etmek' },
+      { word: 'protect', es: 'proteger',  pt: 'proteger', tr: 'korumak' },
+    ],
+    askLocal: {
+      es: 'Este alambre me va a destrozar. ¡Algo para protegerme las manos!',
+      pt: 'Esse arame vai me rasgar todo. Algo para proteger as minhas mãos!',
+      tr: 'Bu tel beni paramparça eder. Ellerimi koruyacak bir şey!',
+    },
     accepts: ['a pair of gloves', 'an oven glove', 'a sock', 'a scarf', 'a thick tea towel'],
     rejects: ['a sheet of paper', 'a thin plastic bag', 'a pen', 'a phone', 'a plate'],
     guard: true,
@@ -176,6 +252,15 @@ const STAGES = [
     scene: 'The Road Out',
     ask: "It's pitch black out here. Something to light the way and we're gone!",
     rubric: 'An object that emits light or could be used as a light source: a torch, a phone, a lamp, a desk light, a candle, a lighter, matches, a bike light, a lit screen, a head torch, fairy lights, a lantern.',
+    vocab: [
+      { word: 'pitch black',  es: 'oscurísimo',           pt: 'escuro como breu',  tr: 'zifiri karanlık' },
+      { word: 'light the way', es: 'iluminar el camino',  pt: 'iluminar o caminho', tr: 'yolu aydınlatmak' },
+    ],
+    askLocal: {
+      es: 'Aquí fuera está oscurísimo. ¡Algo para iluminar el camino y nos vamos!',
+      pt: 'Está escuro como breu aqui fora. Algo para iluminar o caminho e vamos embora!',
+      tr: 'Burası zifiri karanlık. Yolu aydınlatacak bir şey ve gidiyoruz!',
+    },
     accepts: ['a torch', 'a mobile phone', 'a desk lamp', 'a candle', 'a lighter', 'a bike light'],
     rejects: ['a mug', 'a sock', 'a book', 'a fork', 'a plant'],
     guard: true,
