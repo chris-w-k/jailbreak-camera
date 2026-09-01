@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node server.js",
     "mock": "MOCK=1 node server.js",
-    "art": "node tools/generate-art.js"
+    "art": "node tools/generate-art.js",
+    "voice": "node tools/generate-voice.js"
   },
   "engines": {
     "node": ">=18"

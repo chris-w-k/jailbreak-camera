@@ -1031,6 +1031,7 @@ const Speech = (() => {
   let voice = null;
   let voicePoll = null;
   let primed = false;
+  let clip = null;   // the <audio> element for a server-voiced or pre-baked line, if one is playing
   /**
    * 'unknown' until we have watched one utterance actually try to start.
    *
@@ -1042,6 +1043,20 @@ const Speech = (() => {
    * and when nothing does, hand the line to the app, which does have a voice.
    */
   let state = 'unknown';   // 'unknown' | 'working' | 'dead'
+
+  /**
+   * A `voiceClip` is either a URL string (a pre-baked line served from
+   * assets/voice/) or `{mime, data}` (base64 audio the server just synthesized
+   * for a live judge/timeout reason). Either way it's real recorded audio, not
+   * a browser TTS voice, so it plays the same everywhere `<audio>` works —
+   * including the Android WebView that speechSynthesis is dead on.
+   */
+  function clipSrc(voiceClip) {
+    if (!voiceClip) return null;
+    if (typeof voiceClip === 'string') return voiceClip;
+    if (voiceClip.data) return `data:${voiceClip.mime || 'audio/wav'};base64,${voiceClip.data}`;
+    return null;
+  }
 
   function pick() {
     if (!window.speechSynthesis) return null;
@@ -1106,49 +1121,73 @@ const Speech = (() => {
     init, prime,
     get state() { return state; },
     /**
+     * Browser TTS, exactly as before — the fallback for whenever a real
+     * recorded clip isn't available (no key, generation failed, or this line
+     * has no pre-baked file). Split out of say() so a clip's own onerror can
+     * drop back to it without duplicating the logic.
+     */
+    sayBrowser(text) {
+      if (!window.speechSynthesis || state === 'dead') return void Bridge.speak(text);
+      if (!voice) voice = pick();
+
+      const fire = () => {
+        const u = new SpeechSynthesisUtterance(String(text));
+        u.lang = 'en-GB';
+        if (voice) {
+          try { u.voice = voice; if (/^en/i.test(voice.lang || '')) u.lang = voice.lang; }
+          catch { /* engine refused the voice; the default one still speaks */ }
+        }
+        u.pitch = 0.6;              // dropped well below natural — reads as machine
+        u.rate = 0.95;
+        let started = false;
+        u.onstart = () => { started = true; state = 'working'; };
+        u.onerror = () => { if (!started) giveUp(text); };
+        // If nothing has begun in a second and a half, nothing is going to.
+        setTimeout(() => { if (!started && state !== 'working') giveUp(text); }, 1500);
+        speechSynthesis.speak(u);
+      };
+
+      // cancel() followed immediately by speak() silently drops the new
+      // utterance on several Android builds, which is a very good way to end
+      // up with a game that never says anything. Only cancel when something
+      // is actually in the air, and give the queue a beat to clear.
+      if (speechSynthesis.speaking || speechSynthesis.pending) {
+        speechSynthesis.cancel();
+        setTimeout(fire, 120);
+      } else {
+        fire();
+      }
+    },
+    /**
      * Never allowed to throw. say() is called synchronously from the middle of
      * a stage, so an unhappy speech engine — a rejected voice object, a platform
      * quirk, a policy block — must cost the flavour and nothing else. Losing an
      * attempt because the narrator cleared its throat would be absurd.
+     *
+     * `voiceClip` (optional) is a real recorded line — a pre-baked URL or the
+     * live audio a judge/timeout response just carried back — and always wins
+     * over browser TTS when present. Passing nothing keeps the old behaviour.
      */
-    say(text) {
+    say(text, voiceClip) {
       try {
         if (Chip.muted || !text) return;
-        if (!window.speechSynthesis || state === 'dead') return void Bridge.speak(text);
-        if (!voice) voice = pick();
-
-        const fire = () => {
-          const u = new SpeechSynthesisUtterance(String(text));
-          u.lang = 'en-GB';
-          if (voice) {
-            try { u.voice = voice; if (/^en/i.test(voice.lang || '')) u.lang = voice.lang; }
-            catch { /* engine refused the voice; the default one still speaks */ }
-          }
-          u.pitch = 0.6;              // dropped well below natural — reads as machine
-          u.rate = 0.95;
-          let started = false;
-          u.onstart = () => { started = true; state = 'working'; };
-          u.onerror = () => { if (!started) giveUp(text); };
-          // If nothing has begun in a second and a half, nothing is going to.
-          setTimeout(() => { if (!started && state !== 'working') giveUp(text); }, 1500);
-          speechSynthesis.speak(u);
-        };
-
-        // cancel() followed immediately by speak() silently drops the new
-        // utterance on several Android builds, which is a very good way to end
-        // up with a game that never says anything. Only cancel when something
-        // is actually in the air, and give the queue a beat to clear.
-        if (speechSynthesis.speaking || speechSynthesis.pending) {
-          speechSynthesis.cancel();
-          setTimeout(fire, 120);
-        } else {
-          fire();
+        const src = clipSrc(voiceClip);
+        if (src) {
+          if (clip) { try { clip.pause(); } catch { /* already gone */ } }
+          clip = new Audio(src);
+          clip.addEventListener('error', () => this.sayBrowser(text));
+          clip.play().catch(() => this.sayBrowser(text));
+          return;
         }
+        this.sayBrowser(text);
       } catch (e) {
         console.warn('speech unavailable:', e && e.message);
       }
     },
-    stop() { try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch { /* nothing to stop */ } },
+    stop() {
+      try { if (clip) { clip.pause(); clip = null; } } catch { /* nothing to stop */ }
+      try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch { /* nothing to stop */ }
+    },
   };
 })();
 
@@ -1358,10 +1397,11 @@ function buildLangs() {
  * must stay English whatever the screen says. That is the whole point: read it
  * in your language if you need to, hear it in English regardless.
  */
-function speakable(text, vocab) {
+function speakable(text, vocab, voiceUrl) {
   const wrap = document.createElement('div');
   wrap.dataset.say = '';
   wrap.dataset.speak = text;
+  if (voiceUrl) wrap.dataset.speakVoice = voiceUrl;
   const line = document.createElement('span');
   line.className = 'line';
   line.append(...markVocab(text, vocab));
@@ -1419,7 +1459,7 @@ document.addEventListener('click', e => {
   const host = e.target.closest('[data-say]');
   if (!host) return;
   const line = host.querySelector('.line');
-  Speech.say(host.dataset.speak || (line || host).textContent);
+  Speech.say(host.dataset.speak || (line || host).textContent, host.dataset.speakVoice);
 });
 
 // The first tap anywhere, whatever it was for. Several speech engines will only
@@ -2111,7 +2151,7 @@ function renderArt(host, st) {
     host.appendChild(img);
   }
 
-  const bubble = speakable(st.ask, st.vocab);
+  const bubble = speakable(st.ask, st.vocab, st.voice);
   bubble.className = 'bubble';
   host.appendChild(bubble);
 }
@@ -2178,7 +2218,8 @@ function paintIntro() {
   }
 
   const line = Lang.t(INTRO_BEATS[introStep]);
-  const bubble = speakable(line);
+  const voiceUrl = (S && S.introVoice) ? S.introVoice[introStep] : null;
+  const bubble = speakable(line, null, voiceUrl);
   bubble.className = 'bubble';
   host.appendChild(bubble);
 
@@ -2192,7 +2233,7 @@ function paintIntro() {
 
   const last = introStep === INTRO_BEATS.length - 1;
   $('intro-go').textContent = Lang.t(last ? 'intro_go' : 'intro_next');
-  Speech.say(line);
+  Speech.say(line, voiceUrl);
   Analytics.capture('intro_beat', { beat: introStep + 1 });
 }
 
@@ -2242,7 +2283,7 @@ function brief() {
   renderArt($('brief-art'), S.stage);
   renderAssist($('brief-assist'), S.stage);
   show('brief');
-  Speech.say(S.stage.ask);
+  Speech.say(S.stage.ask, S.stage.voice);
   Analytics.capture('stage_started', { stage: S.stage.id, stage_number: S.stageNumber });
 }
 
@@ -2269,6 +2310,7 @@ async function openCamera() {
   const ask = $('cam-ask');
   ask.innerHTML = '';
   ask.dataset.speak = S.stage.ask;
+  if (S.stage.voice) ask.dataset.speakVoice = S.stage.voice;
   const line = document.createElement('span');
   line.className = 'line';
   line.append(...markVocab(S.stage.ask, S.stage.vocab));
@@ -2520,7 +2562,7 @@ function verdict(out, shot) {
 
   // The timeout already played its klaxon on the way in; don't stack another.
   if (kind !== 'timeout') Chip.sfx[kind === 'pass' ? 'confirm' : wasted ? 'thud' : 'blip']();
-  Speech.say(out.reason);
+  Speech.say(out.reason, out.voice);
   show('verdict');
 }
 
@@ -2581,7 +2623,7 @@ function ending(out) {
   });
 
   Chip.sfx[won ? 'win' : 'lose']();
-  Speech.say(out && out.reason ? out.reason : '');
+  Speech.say(out && out.reason ? out.reason : '', out && out.voice);
   show('end');
   Analytics.capture(won ? 'run_escaped' : 'run_caught', {
     stage_reached: judged ? judged.id : null,
