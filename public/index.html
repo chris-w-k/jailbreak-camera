@@ -439,6 +439,37 @@
   }
   .mute:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
 
+  /* The mirror of .mute, top-left instead of top-right: the way back out to
+     the app, visible on every screen for the whole run. Only shown when
+     Bridge.inApp — outside the app there is nothing for it to hand back to. */
+  .exit{
+    position:fixed; z-index:1000; width:44px; height:44px;
+    top:calc(14px + env(safe-area-inset-top)); left:calc(14px + env(safe-area-inset-left));
+    border:1px solid var(--line); border-radius:50%; background:var(--panel-2);
+    color:var(--ink); font-size:17px; cursor:pointer; box-shadow:0 4px 0 var(--edge);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .exit:active{transform:translateY(3px); box-shadow:0 1px 0 var(--edge);}
+
+  /* ---------- leave-the-game confirmation ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; z-index:1200; background:rgba(0,0,0,.6);
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .modal-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    padding:26px 20px; max-width:360px; width:100%; text-align:center;
+    box-shadow:0 8px 0 0 var(--edge),0 16px 30px var(--shadow);
+  }
+  .modal-title{
+    font-family:var(--display); font-weight:400; text-transform:uppercase;
+    letter-spacing:.5px; font-size:22px; color:var(--ink); margin-bottom:10px;
+  }
+  .modal-body{
+    font-family:var(--body); font-weight:700; font-size:15px; color:var(--dim);
+    line-height:1.5; margin-bottom:20px;
+  }
+
   /* Something went wrong but the run is fine — says so and gets out of the way. */
   .toast{
     position:fixed; left:16px; right:16px; bottom:16px; z-index:1001; max-width:428px;
@@ -463,6 +494,20 @@
 <body>
 
 <button class="mute" id="mute" title="Toggle sound">🔊</button>
+<button class="exit hide" id="exit-btn" title="Exit">✕</button>
+
+<!-- "Leave the game?" confirmation. Hidden by default; opened only from the
+     exit button above, which is itself only shown inside the app — outside
+     it there is no NovaPals session on the other end to hand back to. -->
+<div class="modal-overlay hide" id="exit-modal">
+  <div class="modal-card">
+    <div class="modal-title" data-t="exit_title">LEAVE THE GAME?</div>
+    <p class="modal-body" data-t="exit_body">Your progress in this run will be lost.</p>
+    <button class="btn big gap" id="exit-no" data-t="exit_no">KEEP PLAYING</button>
+    <button class="btn ghost gap" id="exit-yes" data-t="exit_yes">LEAVE</button>
+  </div>
+</div>
+
 
 <div id="app">
 
@@ -1279,6 +1324,8 @@ const Lang = (() => {
     escaped_sub: 'Seven rooms, seven things you found lying around.', restart: 'GO AGAIN',
     finish: 'FINISH', finish_wait: 'Finishing up — tap again if nothing happens.',
     evidence_title: 'THE EVIDENCE', evidence_tap: 'WHAT YOU ACTUALLY HANDED HIM',
+    exit_title: 'LEAVE THE GAME?', exit_body: 'Your progress in this run will be lost.',
+    exit_no: 'KEEP PLAYING', exit_yes: 'LEAVE',
     err_system: 'SYSTEM ERROR', err_camera: 'CAMERA UNAVAILABLE',
     err_try: 'TRY AGAIN', err_new: 'START A NEW RUN',
   };
@@ -2041,6 +2088,9 @@ async function boot() {
       // In a quest, finishing means completing the quest, not looping.
       $('end-finish').classList.remove('hide');
       $('end-again').className = 'btn ghost gap';
+      // Same gate: there is no app on the other end to hand back to outside
+      // the webview, so the exit button would just be a dead X.
+      $('exit-btn').classList.remove('hide');
     }
     if (given) {
       // The app chose the language; the picker would only be a way to break
@@ -2738,21 +2788,68 @@ $('end-again').addEventListener('click', () => { Speech.stop(); startRun(); });
  * which cannot double-pay, because a webview that received the first one would
  * have closed before the child could tap again.
  */
+/**
+ * Shared by FINISH and the leave-the-game confirmation below: both send the
+ * exact same NovaPals.Prototype.End handshake, they just differ in when the
+ * player reaches for it and what the analytics event should call it.
+ */
+function exitToApp(eventName, extraProps) {
+  Speech.stop();
+  Chip.hush();
+  Chip.sfx.confirm();
+  Analytics.capture(eventName, Object.assign({
+    outcome: document.body.dataset.outcome || null,
+    objects_found: (S && S.evidence ? S.evidence.length : 0),
+    attempt: Bridge.endSends + 1,
+  }, extraProps || {}));
+  Bridge.finish();
+}
+
 $('end-finish').addEventListener('click', () => {
   const btn = $('end-finish');
   if (btn.disabled) return;
   btn.disabled = true;
-  Speech.stop();
-  Chip.hush();
-  Chip.sfx.confirm();
-  Analytics.capture('quest_finished', {
-    outcome: document.body.dataset.outcome || null,
-    objects_found: (S && S.evidence ? S.evidence.length : 0),
-    attempt: Bridge.endSends + 1,
-  });
-  Bridge.finish();
+  exitToApp('quest_finished');
   setTimeout(() => {
     btn.disabled = false;
+    toast(Lang.t('finish_wait'));
+  }, 4000);
+});
+
+/**
+ * The X in the top-left, available on every screen for the whole run — the
+ * way out for a player (or a parent) who wants to stop before finishing the
+ * quest. Pauses the shot clock while the confirmation is up, same as opening
+ * a translation does, so backing out to check isn't itself a way to lose an
+ * attempt; "no" hands the clock back exactly where it left off.
+ */
+let exitLocked = false;
+$('exit-btn').addEventListener('click', () => {
+  Chip.sfx.select();
+  Clock.pause();
+  Analytics.capture('exit_prompt_opened', { screen: document.body.dataset.screen, stage_number: S ? S.stageNumber : null });
+  $('exit-modal').classList.remove('hide');
+});
+function closeExitPrompt(resume) {
+  $('exit-modal').classList.add('hide');
+  if (resume) Clock.resume();
+}
+$('exit-no').addEventListener('click', () => {
+  Chip.sfx.select();
+  Analytics.capture('exit_cancelled', { screen: document.body.dataset.screen, stage_number: S ? S.stageNumber : null });
+  closeExitPrompt(true);
+});
+$('exit-modal').addEventListener('click', e => {
+  // Tapping the dimmed backdrop (not the card itself) reads as "no" too.
+  if (e.target.id === 'exit-modal') $('exit-no').click();
+});
+$('exit-yes').addEventListener('click', () => {
+  if (exitLocked) return;
+  exitLocked = true;
+  closeExitPrompt(false);
+  exitToApp('quest_exited_early', { screen: document.body.dataset.screen, stage_number: S ? S.stageNumber : null });
+  setTimeout(() => {
+    exitLocked = false;
     toast(Lang.t('finish_wait'));
   }, 4000);
 });
