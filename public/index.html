@@ -1222,6 +1222,12 @@ const Speech = (() => {
           // moment assets/voice/*.wav started existing.
           if (clip && clip !== unlockedAudio) { try { clip.pause(); } catch { /* already gone */ } }
           clip = unlockedAudio || new Audio();
+          // unlockAudio() muted its priming play so the unlock trick itself
+          // is silent — reusing that same element for a real line means its
+          // volume is still 0 unless we put it back, which is exactly why
+          // every line went silent (including the judge's live comment) the
+          // moment the first tap anywhere created unlockedAudio.
+          clip.volume = 1;
           clip.onerror = () => { console.warn('[speech] clip errored, falling back:', clip.error && clip.error.message); this.sayBrowser(text); };
           clip.src = src;
           const p = clip.play();
