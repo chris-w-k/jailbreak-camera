@@ -219,6 +219,15 @@ const MOCK_PASS = ['A biro! Get in.', "Perfect. That'll do nicely.", 'Yes! Knew 
 const MOCK_FAIL = ["That's not it, mate. Look again.", 'Useless. Next.', "Nope. Try harder."];
 const MOCK_DARK = ["It's pitch black, I can't see a thing!", 'Whoa, too close — back up a bit.'];
 
+// A second failed attempt at the same object is waved through rather than
+// spent — see the leniency check in judgePhoto(). These lines cover for the
+// judge accepting something he already said no to once.
+const LENIENCY_LINES = [
+  "Not my first choice, but let's try it anyway.",
+  "Wasn't what I asked for, but go on then.",
+  "Eh, close enough. Don't push your luck a third time.",
+];
+
 // Running out of time needs no model call — the punk isn't reacting to an object,
 // he's reacting to nothing arriving. Fixed lines, free, instant.
 const TIMEOUT_LINES = [
@@ -487,6 +496,18 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
   // feel unfair, so the rule is enforced here as well as asked for in the prompt.
   if (verdict === 'fail' && Number.isFinite(confidence) && confidence < 0.5) verdict = 'unreadable';
 
+  // A player's second attempt at a stage is waved through even on a genuine
+  // fail. One miss is normal; losing the whole run over a second unlucky
+  // object read is the kind of thing that makes people quit rather than try
+  // a third time (see the retry-vs-drop-off analysis). 'unreadable' already
+  // costs nothing, so this only ever converts an actual 'fail'.
+  const attemptNumber = ATTEMPTS_PER_STAGE - s.attemptsLeft + 1;
+  let leniencyReason = null;
+  if (verdict === 'fail' && attemptNumber === 2) {
+    verdict = 'pass';
+    leniencyReason = pick(LENIENCY_LINES, s.photos);
+  }
+
   if (verdict === 'pass') {
     s.evidence.push({
       stage: stage.id, scene: stage.scene,
@@ -507,11 +528,13 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
     ...statePayload(s),
     verdict,
     object: String(out.object || '').slice(0, 60) || null,
-    reason: String(out.reason || '').slice(0, 240),
+    reason: leniencyReason || String(out.reason || '').slice(0, 240),
     confidence: Number.isFinite(confidence) ? confidence : null,
     latencyMs: Date.now() - t0,
     // Only meaningful on 'escaped', but harmless otherwise.
     durationMs: Date.now() - s.startedAt,
+    // Lets the client (and analytics) tell an earned pass from a waved-through one.
+    leniency: !!leniencyReason,
   });
 }
 
