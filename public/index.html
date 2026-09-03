@@ -2614,6 +2614,7 @@ function verdict(out, shot) {
   Analytics.capture('verdict', {
     stage: judged.id, stage_number: out.stageNumber, verdict: kind,
     object: out.object, confidence: out.confidence, latency_ms: out.latencyMs,
+    leniency: !!out.leniency,
   });
   // Feedback on whether the photo itself was right, as distinct from 'verdict'
   // above (which also covers the non-judgment outcomes: unreadable, error,
@@ -2622,11 +2623,15 @@ function verdict(out, shot) {
   if (kind === 'pass' || kind === 'fail') {
     Analytics.capture('picture_feedback_given', {
       stage: judged.id, stage_number: out.stageNumber, attempt: judgedAttempt,
-      answer: kind === 'pass' ? 'correct' : 'incorrect',
+      // A leniency pass waved through a genuine miss, so it isn't really
+      // 'correct' — flagged separately rather than folded into answer so a
+      // waved-through object doesn't get counted as evidence the judge got
+      // it right.
+      answer: kind === 'pass' ? 'correct' : 'incorrect', leniency: !!out.leniency,
       object: out.object, confidence: out.confidence,
     });
   }
-  if (kind === 'pass') Analytics.capture('stage_passed', { stage: judged.id, attempts_used: judgedAttempt });
+  if (kind === 'pass') Analytics.capture('stage_passed', { stage: judged.id, attempts_used: judgedAttempt, leniency: !!out.leniency });
   if (wasted && out.over !== 'caught') Analytics.capture('stage_failed', { stage: judged.id, attempt: judgedAttempt, attempts_left: out.attemptsLeft, timed_out: kind === 'timeout' });
 
   // Caught or out: the ending screen carries the punk's last line, so the run
