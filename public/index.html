@@ -2607,14 +2607,16 @@ async function submit(shot) {
 function verdict(out, shot) {
   const kind = out.verdict;               // pass | fail | unreadable | error | timeout
   // Anything that actually cost an attempt. A timeout costs one; an unreadable
-  // photo or a wobbly API call do not.
-  const wasted = kind === 'fail' || kind === 'timeout';
+  // photo or a wobbly API call do not — and neither does a leniency-covered
+  // timeout (the run's very first attempt): the server didn't touch
+  // attemptsLeft for it, so it reads the same as a free retry here too.
+  const wasted = (kind === 'fail' || kind === 'timeout') && !out.leniency;
   S = Object.assign({}, S, out);
 
   Analytics.capture('verdict', {
     stage: judged.id, stage_number: out.stageNumber, verdict: kind,
     object: out.object, confidence: out.confidence, latency_ms: out.latencyMs,
-    leniency: !!out.leniency,
+    leniency: !!out.leniency, leniency_kind: out.leniencyKind || null, model: out.model || null,
   });
   // Feedback on whether the photo itself was right, as distinct from 'verdict'
   // above (which also covers the non-judgment outcomes: unreadable, error,
@@ -2628,10 +2630,11 @@ function verdict(out, shot) {
       // waved-through object doesn't get counted as evidence the judge got
       // it right.
       answer: kind === 'pass' ? 'correct' : 'incorrect', leniency: !!out.leniency,
+      leniency_kind: out.leniencyKind || null,
       object: out.object, confidence: out.confidence,
     });
   }
-  if (kind === 'pass') Analytics.capture('stage_passed', { stage: judged.id, attempts_used: judgedAttempt, leniency: !!out.leniency });
+  if (kind === 'pass') Analytics.capture('stage_passed', { stage: judged.id, attempts_used: judgedAttempt, leniency: !!out.leniency, leniency_kind: out.leniencyKind || null });
   if (wasted && out.over !== 'caught') Analytics.capture('stage_failed', { stage: judged.id, attempt: judgedAttempt, attempts_left: out.attemptsLeft, timed_out: kind === 'timeout' });
 
   // Caught or out: the ending screen carries the punk's last line, so the run

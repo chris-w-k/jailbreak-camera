@@ -70,19 +70,34 @@ const PHOTOS_PER_RUN = Number(process.env.PHOTOS_PER_RUN || 40);
 // edit; the client counts down and reports the expiry, because only the client
 // knows when the viewfinder actually opened.
 const SHOT_SECONDS = Number(process.env.SHOT_SECONDS || 15);
+// Extra seconds granted only for a run's very first photo (s.photos === 0
+// when the camera opens) — that shot is learning the capture UI and the
+// puzzle at once, on the stage whose objects (pens, pins, paperclips) are
+// the hardest in the game to hold steady and in focus. See statePayload().
+const FIRST_SHOT_BONUS_SECONDS = Number(process.env.FIRST_SHOT_BONUS_SECONDS || 10);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 700 * 1024);
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Preference ladder — the server probes ListModels on boot and takes the first
 // one this key can actually see, so a model being renamed or retired degrades
 // instead of 400ing. All of these are multimodal; the judge sends an image.
+//
+// '-latest' is deliberately last, not first: it's Google's own alias for
+// "whatever is newest right now" and can repoint to a different underlying
+// model with no warning and no code change on our side — the leading
+// suspect for an across-every-stage judging shift that lined up with a
+// same-day redeploy and nothing else. Numbered releases (2.5, 3.0) are the
+// stable choice; only fall back to '-latest' if nothing pinned is visible
+// to this key. GEMINI_VISION_MODEL overrides the whole ladder when set, so
+// a model can be pinned or rolled back from Render's dashboard alone.
+const PINNED_VISION_MODEL = (process.env.GEMINI_VISION_MODEL || '').trim();
 const VISION_MODELS = [
-  'gemini-flash-latest',
-  'gemini-3-flash',
   'gemini-2.5-flash',
+  'gemini-3-flash',
   'gemini-2.0-flash',
+  'gemini-flash-latest',
 ];
-let MODELS = { vision: VISION_MODELS[0], resolved: false, note: '' };
+let MODELS = { vision: PINNED_VISION_MODEL || VISION_MODELS[0], resolved: false, note: '' };
 
 // --- the punk's voice ---
 // Same key, same generateContent endpoint as the judge — Gemini's TTS models
@@ -280,6 +295,10 @@ function newSession(lang) {
     lang: normLang(lang),
     stage: 0,
     attemptsLeft: ATTEMPTS_PER_STAGE,
+    // A timed-out first attempt doesn't decrement attemptsLeft (see timeUp),
+    // so attemptNumber alone can't tell a second timeout from a first —
+    // this flag is what stops the free retry being handed out every time.
+    firstTimeoutGraceUsed: false,
     photos: 0,
     // Every object the judge managed to identify, in order. Powers the
     // end-of-run contact sheet, and it's the hook for reactive art later.
@@ -365,7 +384,7 @@ function statePayload(s) {
     totalStages: TOTAL_STAGES,
     attemptsLeft: s.attemptsLeft,
     attemptsPerStage: ATTEMPTS_PER_STAGE,
-    shotSeconds: SHOT_SECONDS,
+    shotSeconds: s.photos === 0 ? SHOT_SECONDS + FIRST_SHOT_BONUS_SECONDS : SHOT_SECONDS,
     over: s.over,
     stage: stage && !s.over ? {
       id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage), voice: voicePath(s.stage),
@@ -486,6 +505,9 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
       object: null,
       reason: "The light's gone funny — try that again.",
       latencyMs: Date.now() - t0,
+      // Which model this failure happened against — the point of pinning
+      // is that this stays constant; if it doesn't, that's the tell.
+      model: MODELS.vision,
     });
   }
 
@@ -501,11 +523,24 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
   // object read is the kind of thing that makes people quit rather than try
   // a third time (see the retry-vs-drop-off analysis). 'unreadable' already
   // costs nothing, so this only ever converts an actual 'fail'.
+  //
+  // The run's very first judged attempt gets the same grace, for a different
+  // reason: most exits happen right here — a single bad verdict on the very
+  // first photo of the whole game, over half of them before a second attempt
+  // is even tried. Waiting for attempt 2 to be forgiving doesn't reach that
+  // majority; only forgiving attempt 1 itself does.
   const attemptNumber = ATTEMPTS_PER_STAGE - s.attemptsLeft + 1;
+  const isFirstAttemptOfRun = s.stage === 0 && attemptNumber === 1;
   let leniencyReason = null;
+  let leniencyKind = null;
   if (verdict === 'fail' && attemptNumber === 2) {
     verdict = 'pass';
     leniencyReason = pick(LENIENCY_LINES, s.photos);
+    leniencyKind = 'second_attempt';
+  } else if (verdict === 'fail' && isFirstAttemptOfRun) {
+    verdict = 'pass';
+    leniencyReason = pick(LENIENCY_LINES, s.photos);
+    leniencyKind = 'first_attempt';
   }
 
   if (verdict === 'pass') {
@@ -535,6 +570,14 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
     durationMs: Date.now() - s.startedAt,
     // Lets the client (and analytics) tell an earned pass from a waved-through one.
     leniency: !!leniencyReason,
+    // Which rule granted it, if any — so 'first attempt' saves and 'second
+    // attempt' saves can be told apart later without re-deriving it from
+    // attemptsLeft history.
+    leniencyKind,
+    // Surfaced so PostHog can catch the next silent model swap the way this
+    // one was caught — by a pass-rate shift lining up with a model change,
+    // instead of by guessing after the fact.
+    model: MODELS.vision,
   });
 }
 
@@ -552,6 +595,30 @@ function timeUp(sessionId) {
   const s = getSession(sessionId);
   if (s.over) throw Object.assign(new Error('That run is already over.'), { status: 409 });
 
+  // The run's very first attempt is exempt here too (see the matching note
+  // in judgePhoto), but a timeout has no photo to wave through as a pass —
+  // there's nothing to accept. So it gets 'unreadable' treatment instead:
+  // a free retry that changes nothing, rather than a fabricated pass. Gated
+  // on a one-shot flag rather than attemptNumber alone: a free retry never
+  // touches attemptsLeft, so without the flag every timeout on stage 1 would
+  // look like "attempt 1" forever and get waved through every time.
+  const attemptNumber = ATTEMPTS_PER_STAGE - s.attemptsLeft + 1;
+  const isFirstAttemptOfRun = s.stage === 0 && attemptNumber === 1 && !s.firstTimeoutGraceUsed;
+  const lineIndex = (attemptNumber - 1 + s.photos) % TIMEOUT_LINES.length;
+
+  if (isFirstAttemptOfRun) {
+    s.firstTimeoutGraceUsed = true;
+    return withVoice({
+      ...statePayload(s),
+      verdict: 'timeout',
+      object: null,
+      reason: TIMEOUT_LINES[lineIndex],
+      durationMs: Date.now() - s.startedAt,
+      leniency: true,
+      leniencyKind: 'first_attempt',
+    });
+  }
+
   s.attemptsLeft -= 1;
   if (s.attemptsLeft <= 0) s.over = 'caught';
 
@@ -559,8 +626,10 @@ function timeUp(sessionId) {
     ...statePayload(s),
     verdict: 'timeout',
     object: null,
-    reason: TIMEOUT_LINES[(ATTEMPTS_PER_STAGE - s.attemptsLeft - 1 + s.photos) % TIMEOUT_LINES.length],
+    reason: TIMEOUT_LINES[lineIndex],
     durationMs: Date.now() - s.startedAt,
+    leniency: false,
+    leniencyKind: null,
   });
 }
 
@@ -738,6 +807,15 @@ async function resolveModels() {
       throw new Error(`${res.status} ${body.slice(0, 200)}`);
     }
     const names = ((await res.json()).models || []).map(m => m.name.replace(/^models\//, ''));
+    // A pin wins outright if the key can see it; note rather than silently
+    // ignoring it if not, since that's the one case someone set it expecting
+    // an effect and got the ladder instead.
+    if (PINNED_VISION_MODEL) {
+      MODELS = names.includes(PINNED_VISION_MODEL)
+        ? { vision: PINNED_VISION_MODEL, resolved: true, note: `pinned via GEMINI_VISION_MODEL (${names.length} models visible)` }
+        : { vision: VISION_MODELS.find(m => names.includes(m)) || VISION_MODELS[VISION_MODELS.length - 1], resolved: true, note: `GEMINI_VISION_MODEL="${PINNED_VISION_MODEL}" not visible to this key — fell back to the ladder` };
+      return;
+    }
     MODELS = {
       vision: VISION_MODELS.find(m => names.includes(m)) || VISION_MODELS[VISION_MODELS.length - 1],
       resolved: true,
