@@ -86,13 +86,6 @@ window.I18N = {
       evidence_title: 'THE EVIDENCE',
       evidence_tap: 'WHAT YOU ACTUALLY HANDED HIM',
 
-      // Only ever seen inside the app — the X in the top-left, and the
-      // confirmation it opens.
-      exit_title: 'LEAVE THE GAME?',
-      exit_body: 'Your progress in this run will be lost.',
-      exit_no: 'KEEP PLAYING',
-      exit_yes: 'LEAVE',
-
       err_system: 'SYSTEM ERROR',
       err_camera: 'CAMERA UNAVAILABLE',
       err_try: 'TRY AGAIN',
@@ -152,11 +145,6 @@ window.I18N = {
 
       evidence_title: 'LAS PRUEBAS',
       evidence_tap: 'LO QUE LE PASASTE DE VERDAD',
-
-      exit_title: '¿SALIR DEL JUEGO?',
-      exit_body: 'Perderás el progreso de esta partida.',
-      exit_no: 'SEGUIR JUGANDO',
-      exit_yes: 'SALIR',
 
       err_system: 'ERROR DEL SISTEMA',
       err_camera: 'CÁMARA NO DISPONIBLE',
@@ -218,11 +206,6 @@ window.I18N = {
       evidence_title: 'AS PROVAS',
       evidence_tap: 'O QUE VOCÊ REALMENTE ENTREGOU',
 
-      exit_title: 'SAIR DO JOGO?',
-      exit_body: 'Você vai perder o progresso desta partida.',
-      exit_no: 'CONTINUAR JOGANDO',
-      exit_yes: 'SAIR',
-
       err_system: 'ERRO DE SISTEMA',
       err_camera: 'CÂMERA INDISPONÍVEL',
       err_try: 'TENTAR DE NOVO',
@@ -282,11 +265,6 @@ window.I18N = {
 
       evidence_title: 'KANITLAR',
       evidence_tap: 'ONA GERÇEKTEN NE VERDİN',
-
-      exit_title: 'OYUNDAN ÇIKILSIN MI?',
-      exit_body: 'Bu turdaki ilerlemen kaybolacak.',
-      exit_no: 'OYNAMAYA DEVAM ET',
-      exit_yes: 'ÇIK',
 
       err_system: 'SİSTEM HATASI',
       err_camera: 'KAMERA KULLANILAMIYOR',
