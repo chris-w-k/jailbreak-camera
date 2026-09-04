@@ -76,13 +76,23 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 // Preference ladder — the server probes ListModels on boot and takes the first
 // one this key can actually see, so a model being renamed or retired degrades
 // instead of 400ing. All of these are multimodal; the judge sends an image.
+//
+// '-latest' is deliberately last, not first: it's Google's own alias for
+// "whatever is newest right now" and can repoint to a different underlying
+// model with no warning and no code change on our side — the leading
+// suspect for an across-every-stage judging shift that lined up with a
+// same-day redeploy and nothing else. Numbered releases (2.5, 3.0) are the
+// stable choice; only fall back to '-latest' if nothing pinned is visible
+// to this key. GEMINI_VISION_MODEL overrides the whole ladder when set, so
+// a model can be pinned or rolled back from Render's dashboard alone.
+const PINNED_VISION_MODEL = (process.env.GEMINI_VISION_MODEL || '').trim();
 const VISION_MODELS = [
-  'gemini-flash-latest',
-  'gemini-3-flash',
   'gemini-2.5-flash',
+  'gemini-3-flash',
   'gemini-2.0-flash',
+  'gemini-flash-latest',
 ];
-let MODELS = { vision: VISION_MODELS[0], resolved: false, note: '' };
+let MODELS = { vision: PINNED_VISION_MODEL || VISION_MODELS[0], resolved: false, note: '' };
 
 // --- the punk's voice ---
 // Same key, same generateContent endpoint as the judge — Gemini's TTS models
@@ -486,6 +496,9 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
       object: null,
       reason: "The light's gone funny — try that again.",
       latencyMs: Date.now() - t0,
+      // Which model this failure happened against — the point of pinning
+      // is that this stays constant; if it doesn't, that's the tell.
+      model: MODELS.vision,
     });
   }
 
@@ -535,6 +548,10 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
     durationMs: Date.now() - s.startedAt,
     // Lets the client (and analytics) tell an earned pass from a waved-through one.
     leniency: !!leniencyReason,
+    // Surfaced so PostHog can catch the next silent model swap the way this
+    // one was caught — by a pass-rate shift lining up with a model change,
+    // instead of by guessing after the fact.
+    model: MODELS.vision,
   });
 }
 
@@ -738,6 +755,15 @@ async function resolveModels() {
       throw new Error(`${res.status} ${body.slice(0, 200)}`);
     }
     const names = ((await res.json()).models || []).map(m => m.name.replace(/^models\//, ''));
+    // A pin wins outright if the key can see it; note rather than silently
+    // ignoring it if not, since that's the one case someone set it expecting
+    // an effect and got the ladder instead.
+    if (PINNED_VISION_MODEL) {
+      MODELS = names.includes(PINNED_VISION_MODEL)
+        ? { vision: PINNED_VISION_MODEL, resolved: true, note: `pinned via GEMINI_VISION_MODEL (${names.length} models visible)` }
+        : { vision: VISION_MODELS.find(m => names.includes(m)) || VISION_MODELS[VISION_MODELS.length - 1], resolved: true, note: `GEMINI_VISION_MODEL="${PINNED_VISION_MODEL}" not visible to this key — fell back to the ladder` };
+      return;
+    }
     MODELS = {
       vision: VISION_MODELS.find(m => names.includes(m)) || VISION_MODELS[VISION_MODELS.length - 1],
       resolved: true,

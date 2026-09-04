@@ -2614,7 +2614,7 @@ function verdict(out, shot) {
   Analytics.capture('verdict', {
     stage: judged.id, stage_number: out.stageNumber, verdict: kind,
     object: out.object, confidence: out.confidence, latency_ms: out.latencyMs,
-    leniency: !!out.leniency,
+    leniency: !!out.leniency, model: out.model || null,
   });
   // Feedback on whether the photo itself was right, as distinct from 'verdict'
   // above (which also covers the non-judgment outcomes: unreadable, error,

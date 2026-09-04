@@ -23,6 +23,12 @@ services:
         sync: false
       - key: POSTHOG_HOST
         value: https://eu.i.posthog.com
+      # Pins the judge to one exact Gemini model, bypassing the ladder in
+      # server.js entirely. Leave unset to auto-pick the best stable model
+      # this key can see; set only if you need to freeze a version or force
+      # a rollback without a redeploy.
+      - key: GEMINI_VISION_MODEL
+        sync: false
       # The shot clock, in seconds.
       - key: SHOT_SECONDS
         value: "15"
