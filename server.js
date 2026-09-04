@@ -70,6 +70,11 @@ const PHOTOS_PER_RUN = Number(process.env.PHOTOS_PER_RUN || 40);
 // edit; the client counts down and reports the expiry, because only the client
 // knows when the viewfinder actually opened.
 const SHOT_SECONDS = Number(process.env.SHOT_SECONDS || 15);
+// Extra seconds granted only for a run's very first photo (s.photos === 0
+// when the camera opens) — that shot is learning the capture UI and the
+// puzzle at once, on the stage whose objects (pens, pins, paperclips) are
+// the hardest in the game to hold steady and in focus. See statePayload().
+const FIRST_SHOT_BONUS_SECONDS = Number(process.env.FIRST_SHOT_BONUS_SECONDS || 10);
 const MAX_IMAGE_BYTES = Number(process.env.MAX_IMAGE_BYTES || 700 * 1024);
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -290,6 +295,10 @@ function newSession(lang) {
     lang: normLang(lang),
     stage: 0,
     attemptsLeft: ATTEMPTS_PER_STAGE,
+    // A timed-out first attempt doesn't decrement attemptsLeft (see timeUp),
+    // so attemptNumber alone can't tell a second timeout from a first —
+    // this flag is what stops the free retry being handed out every time.
+    firstTimeoutGraceUsed: false,
     photos: 0,
     // Every object the judge managed to identify, in order. Powers the
     // end-of-run contact sheet, and it's the hook for reactive art later.
@@ -375,7 +384,7 @@ function statePayload(s) {
     totalStages: TOTAL_STAGES,
     attemptsLeft: s.attemptsLeft,
     attemptsPerStage: ATTEMPTS_PER_STAGE,
-    shotSeconds: SHOT_SECONDS,
+    shotSeconds: s.photos === 0 ? SHOT_SECONDS + FIRST_SHOT_BONUS_SECONDS : SHOT_SECONDS,
     over: s.over,
     stage: stage && !s.over ? {
       id: stage.id, scene: stage.scene, ask: stage.ask, art: artPath(s.stage), voice: voicePath(s.stage),
@@ -514,11 +523,24 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
   // object read is the kind of thing that makes people quit rather than try
   // a third time (see the retry-vs-drop-off analysis). 'unreadable' already
   // costs nothing, so this only ever converts an actual 'fail'.
+  //
+  // The run's very first judged attempt gets the same grace, for a different
+  // reason: most exits happen right here — a single bad verdict on the very
+  // first photo of the whole game, over half of them before a second attempt
+  // is even tried. Waiting for attempt 2 to be forgiving doesn't reach that
+  // majority; only forgiving attempt 1 itself does.
   const attemptNumber = ATTEMPTS_PER_STAGE - s.attemptsLeft + 1;
+  const isFirstAttemptOfRun = s.stage === 0 && attemptNumber === 1;
   let leniencyReason = null;
+  let leniencyKind = null;
   if (verdict === 'fail' && attemptNumber === 2) {
     verdict = 'pass';
     leniencyReason = pick(LENIENCY_LINES, s.photos);
+    leniencyKind = 'second_attempt';
+  } else if (verdict === 'fail' && isFirstAttemptOfRun) {
+    verdict = 'pass';
+    leniencyReason = pick(LENIENCY_LINES, s.photos);
+    leniencyKind = 'first_attempt';
   }
 
   if (verdict === 'pass') {
@@ -548,6 +570,10 @@ async function judgePhoto(sessionId, imageB64, mime, force) {
     durationMs: Date.now() - s.startedAt,
     // Lets the client (and analytics) tell an earned pass from a waved-through one.
     leniency: !!leniencyReason,
+    // Which rule granted it, if any — so 'first attempt' saves and 'second
+    // attempt' saves can be told apart later without re-deriving it from
+    // attemptsLeft history.
+    leniencyKind,
     // Surfaced so PostHog can catch the next silent model swap the way this
     // one was caught — by a pass-rate shift lining up with a model change,
     // instead of by guessing after the fact.
@@ -569,6 +595,30 @@ function timeUp(sessionId) {
   const s = getSession(sessionId);
   if (s.over) throw Object.assign(new Error('That run is already over.'), { status: 409 });
 
+  // The run's very first attempt is exempt here too (see the matching note
+  // in judgePhoto), but a timeout has no photo to wave through as a pass —
+  // there's nothing to accept. So it gets 'unreadable' treatment instead:
+  // a free retry that changes nothing, rather than a fabricated pass. Gated
+  // on a one-shot flag rather than attemptNumber alone: a free retry never
+  // touches attemptsLeft, so without the flag every timeout on stage 1 would
+  // look like "attempt 1" forever and get waved through every time.
+  const attemptNumber = ATTEMPTS_PER_STAGE - s.attemptsLeft + 1;
+  const isFirstAttemptOfRun = s.stage === 0 && attemptNumber === 1 && !s.firstTimeoutGraceUsed;
+  const lineIndex = (attemptNumber - 1 + s.photos) % TIMEOUT_LINES.length;
+
+  if (isFirstAttemptOfRun) {
+    s.firstTimeoutGraceUsed = true;
+    return withVoice({
+      ...statePayload(s),
+      verdict: 'timeout',
+      object: null,
+      reason: TIMEOUT_LINES[lineIndex],
+      durationMs: Date.now() - s.startedAt,
+      leniency: true,
+      leniencyKind: 'first_attempt',
+    });
+  }
+
   s.attemptsLeft -= 1;
   if (s.attemptsLeft <= 0) s.over = 'caught';
 
@@ -576,8 +626,10 @@ function timeUp(sessionId) {
     ...statePayload(s),
     verdict: 'timeout',
     object: null,
-    reason: TIMEOUT_LINES[(ATTEMPTS_PER_STAGE - s.attemptsLeft - 1 + s.photos) % TIMEOUT_LINES.length],
+    reason: TIMEOUT_LINES[lineIndex],
     durationMs: Date.now() - s.startedAt,
+    leniency: false,
+    leniencyKind: null,
   });
 }
 
